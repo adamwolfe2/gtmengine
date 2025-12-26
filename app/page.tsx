@@ -1786,238 +1786,69 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-      <div className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col">
-        <div className="flex items-center gap-3 p-4 border-b border-gray-200">
-          <div className="relative">
-            {formData.logo ? (
-              <img
-                src={formData.logo || "/placeholder.svg"}
-                alt={formData.companyName}
-                className="w-10 h-10 rounded-lg object-contain"
-              />
-            ) : (
-              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                <Building2 size={20} className="text-gray-400" />
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="font-semibold text-gray-900 text-sm">{formData.companyName || "My Company"}</div>
-            <div className="text-xs text-gray-500">{formData.targetPlatforms.length} platforms</div>
-          </div>
-        </div>
-        <nav className="flex-1 p-3 space-1">
-          {[
-            { id: "library", icon: FileText, label: "Content Library", badge: formData.targetPlatforms.length },
-            { id: "calendar", icon: Calendar, label: "90-Day Calendar" },
-            { id: "tasks", icon: CheckSquare, label: "Daily Tasks" },
-            { id: "pillars", icon: Target, label: "Content Pillars" },
-            { id: "metrics", icon: BarChart3, label: "Metrics & KPIs" },
-          ].map((n) => (
-            <button
-              key={n.id}
-              onClick={() => setStep(n.num)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition ${
-                step === n.num
-                  ? "bg-transparent text-gray-900 font-medium border-l-2 border-gray-900 rounded-l-none"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <n.icon size={18} />
-              <span>{n.label}</span>
-              {n.badge && <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{n.badge}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-gray-200 space-1">
-          <button
-            onClick={() => setShowSettings(true)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
-          >
-            <Settings size={18} />
-            <span>Settings</span>
-          </button>
-          <button
-            onClick={onComplete} // This should likely be the reset function, but for now, just call onComplete
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
-          >
-            <LogOut size={18} />
-            <span>Reset</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="md:hidden bg-white border-b border-gray-200 p-4 sticky top-0 z-40">
-        <div className="flex items-center justify-between">
-          <button onClick={() => setShowMobileMenu(true)} className="p-2 hover:bg-gray-100 rounded-lg">
-            <Menu size={20} />
-          </button>
-          <div className="flex items-center gap-2">
-            {formData.logo ? (
-              <img
-                src={formData.logo || "/placeholder.svg"}
-                alt={formData.companyName}
-                className="w-8 h-8 rounded object-contain"
-              />
-            ) : (
-              <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-                <Building2 size={16} className="text-gray-400" />
-              </div>
-            )}
-            <span className="text-sm font-bold">{formData.companyName || "My Company"}</span>
-          </div>
-          <button onClick={() => setShowUserMenu(!showUserMenu)} className="p-2 hover:bg-gray-100 rounded-lg relative">
-            <User size={20} />
-          </button>
-        </div>
-      </div>
-
-      {showMobileMenu && (
-        <div className="md:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setShowMobileMenu(false)}>
-          <div className="bg-white w-64 h-full flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {formData.logo ? (
-                  <img
-                    src={formData.logo || "/placeholder.svg"}
-                    alt={formData.companyName}
-                    className="w-10 h-10 rounded-lg object-contain"
-                  />
-                ) : (
-                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <Building2 size={20} className="text-gray-400" />
-                  </div>
-                )}
-                <div>
-                  <h1 className="text-sm font-bold text-gray-900">{formData.companyName || "My Company"}</h1>
-                  <p className="text-xs text-gray-500">Content Engine</p>
-                </div>
-              </div>
-              <button onClick={() => setShowMobileMenu(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X size={20} />
-              </button>
-            </div>
-
-            <nav className="flex-1 p-4 space-1">
-              {[
-                { id: "library", label: "Content Library", icon: FileText, badge: formData.targetPlatforms.length },
-                { id: "calendar", label: "Calendar", icon: Calendar },
-                { id: "tasks", label: "Daily Tasks", icon: CheckSquare, badge: `${formData.targetPlatforms.length}/6` },
-                { id: "pillars", label: "Content Pillars", icon: Target },
-                { id: "metrics", label: "Metrics", icon: TrendingUp },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setStep(steps.find((s) => s.title.toLowerCase().replace(" ", "") === item.id)?.num || 1)
-                    setShowMobileMenu(false)
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left ${
-                    step === steps.find((s) => s.title.toLowerCase().replace(" ", "") === item.id)?.num
-                      ? "bg-gray-50 text-gray-900 border-l-4 border-gray-900 font-medium"
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <item.icon size={18} />
-                  <span className="text-sm">{item.label}</span>
-                  {item.badge && (
-                    <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{item.badge}</span>
-                  )}
-                </button>
-              ))}
-            </nav>
-
-            <div className="p-4 border-t border-gray-200 space-1">
-              <button
-                onClick={() => {
-                  setShowSettings(true)
-                  setShowMobileMenu(false)
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
-              >
-                <Settings size={18} />
-                <span className="text-sm">Settings</span>
-              </button>
-              <button
-                onClick={() => {
-                  onComplete() // This should likely be the reset function
-                  setShowMobileMenu(false)
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
-              >
-                <LogOut size={18} />
-                <span className="text-sm">Reset</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="hidden md:flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Home size={16} />
-              <ChevronRight size={14} />
-              <span className="text-gray-900 font-medium">
-                {step === 1
-                  ? "Company"
-                  : step === 2
-                    ? "Audience"
-                    : step === 3
-                      ? "Positioning"
-                      : step === 4
-                        ? "Current State"
-                        : "Goals"}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-700">
-              <Building2 size={16} />
-              <span className="font-medium">{formData.companyName}</span>
-              <span className="text-gray-300">•</span>
-              <span className="text-gray-500">{formData.industry}</span>
-            </div>
-            <div className="relative">
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-2 hover:bg-gray-50 rounded-lg p-1.5"
-              >
-                {formData.logo ? (
-                  <img
-                    src={formData.logo || "/placeholder.svg"}
-                    alt="User"
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                    <User size={16} className="text-gray-600" />
-                  </div>
-                )}
-              </button>
-              {showUserMenu && (
-                <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-10">
-                  <button
-                    onClick={onComplete} // This should likely be the reset function
-                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    Reset Onboarding
-                  </button>
-                  <button
-                    onClick={() => setShowSettings(true)}
-                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    Settings
-                  </button>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header with logo and step indicator */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          {/* Top row: Logo/title */}
+          <div className="flex items-center justify-center mb-4">
+            <div className="flex items-center gap-3">
+              {formData.logo ? (
+                <img
+                  src={formData.logo || "/placeholder.svg"}
+                  alt={formData.companyName}
+                  className="w-10 h-10 rounded-lg object-contain"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
+                  <Sparkles size={20} className="text-white" />
                 </div>
               )}
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">
+                  {formData.companyName || "GTM Content Engine"}
+                </h1>
+                <p className="text-xs text-gray-500">Complete setup to generate your content</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Step indicator - horizontal */}
+          <div className="flex items-center justify-center">
+            <div className="flex items-center gap-1 md:gap-2">
+              {steps.map((s, idx) => (
+                <div key={s.num} className="flex items-center">
+                  <button
+                    onClick={() => {
+                      // Only allow going back to completed steps
+                      if (s.num < step) setStep(s.num)
+                    }}
+                    disabled={s.num > step}
+                    className={`flex items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium transition ${
+                      step === s.num
+                        ? "bg-gray-900 text-white"
+                        : s.num < step
+                          ? "bg-gray-200 text-gray-700 hover:bg-gray-300 cursor-pointer"
+                          : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    }`}
+                  >
+                    <s.icon size={14} className="hidden sm:block" />
+                    <span className="hidden sm:inline">{s.title}</span>
+                    <span className="sm:hidden">{s.num}</span>
+                  </button>
+                  {idx < steps.length - 1 && (
+                    <ChevronRight size={14} className="text-gray-300 mx-0.5 md:mx-1" />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="flex-1 overflow-auto p-4 md:p-8">
+      {/* Main content area - centered */}
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-2xl mx-auto p-4 md:p-8">
           {step === 1 && (
             <div className="space-y-6">
               <div>
