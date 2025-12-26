@@ -1,0 +1,3535 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect } from "react"
+import {
+  Check,
+  Copy,
+  ChevronRight,
+  ChevronLeft,
+  Calendar,
+  FileText,
+  Target,
+  CheckSquare,
+  Search,
+  Sparkles,
+  Building2,
+  Users,
+  Trophy,
+  Megaphone,
+  Download,
+  RefreshCw,
+  Filter,
+  BarChart3,
+  ChevronDown,
+  Linkedin,
+  Twitter,
+  Mail,
+  MessageCircle,
+  Edit3,
+  Settings,
+  Upload,
+  X,
+  TrendingUp,
+  User,
+  FileDown,
+  FileUp,
+  Square,
+  Home,
+  Menu,
+  LogOut,
+} from "lucide-react"
+
+import { parseAIResponse } from "@/lib/parse-ai-response"
+
+// ============================================
+// LOCAL STORAGE UTILITIES
+// ============================================
+const STORAGE_KEYS = {
+  FORM_DATA: "gtm_form_data",
+  GENERATED_CONTENT: "gtm_generated_content",
+  DAILY_TASKS: "gtm_daily_tasks",
+  READY_STATE: "gtm_ready_state",
+}
+
+const saveToLocalStorage = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data))
+  } catch (error) {
+    console.error("Error saving to localStorage:", error)
+  }
+}
+
+const loadFromLocalStorage = (key: string) => {
+  try {
+    const item = localStorage.getItem(key)
+    return item ? JSON.parse(item) : null
+  } catch (error) {
+    console.error("Error loading from localStorage:", error)
+    return null
+  }
+}
+
+const exportAllData = () => {
+  const data = {
+    formData: loadFromLocalStorage(STORAGE_KEYS.FORM_DATA),
+    generatedContent: loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT),
+    dailyTasks: loadFromLocalStorage(STORAGE_KEYS.DAILY_TASKS),
+    readyState: loadFromLocalStorage(STORAGE_KEYS.READY_STATE),
+    exportDate: new Date().toISOString(),
+    version: "1.0",
+  }
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `gtm-content-engine-${Date.now()}.json`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+const importData = (file: File, onSuccess: () => void) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target?.result as string)
+
+      if (data.formData) saveToLocalStorage(STORAGE_KEYS.FORM_DATA, data.formData)
+      if (data.generatedContent) saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT, data.generatedContent)
+      if (data.dailyTasks) saveToLocalStorage(STORAGE_KEYS.DAILY_TASKS, data.dailyTasks)
+      if (data.readyState !== undefined) saveToLocalStorage(STORAGE_KEYS.READY_STATE, data.readyState)
+
+      alert("✓ Data imported successfully! Reloading...")
+      onSuccess()
+    } catch (error) {
+      alert("Error importing data. Please check the file format.")
+      console.error(error)
+    }
+  }
+  reader.readAsText(file)
+}
+
+const exportContentCSV = (content: any, companyName: string) => {
+  const rows = [["Platform", "ID", "Title", "Pillar", "Content"]]
+
+  Object.entries(content).forEach(([platform, posts]: [string, any]) => {
+    posts.forEach((post: any) => {
+      rows.push([platform, post.id.toString(), post.title, post.pillar, post.content.replace(/\n/g, " ")])
+    })
+  })
+
+  const csv = rows.map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n")
+  const blob = new Blob([csv], { type: "text/csv" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `${companyName}-content-library-${Date.now()}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// ============================================
+// CONFIGURATION
+// ============================================
+
+const PLATFORMS = [
+  { id: "linkedin", name: "LinkedIn", icon: Linkedin, color: "bg-blue-600" },
+  { id: "twitter", name: "Twitter/X", icon: Twitter, color: "bg-black" },
+  { id: "threads", name: "Threads", icon: MessageCircle, color: "bg-purple-600" },
+  { id: "email", name: "Email", icon: Mail, color: "bg-green-600" },
+  { id: "ads", name: "Ad Copy", icon: Megaphone, color: "bg-orange-500" },
+]
+
+const PILLARS = [
+  { id: "product", name: "Product Journey", pct: 20, color: "bg-blue-500", desc: "Features, launches, how it works" },
+  { id: "founder", name: "Founder Story", pct: 15, color: "bg-purple-500", desc: "Origin, vision, lessons" },
+  { id: "metrics", name: "Growth Metrics", pct: 15, color: "bg-green-500", desc: "Milestones, wins, traction" },
+  { id: "insights", name: "Industry Insights", pct: 20, color: "bg-amber-500", desc: "Trends, education" },
+  { id: "community", name: "Community Wins", pct: 15, color: "bg-pink-500", desc: "Customer stories" },
+  { id: "culture", name: "Culture/BTS", pct: 10, color: "bg-cyan-500", desc: "Team, behind-the-scenes" },
+  { id: "engagement", name: "Engagement", pct: 5, color: "bg-red-500", desc: "Polls, questions" },
+]
+
+const INDUSTRIES = [
+  { value: "saas", label: "B2B SaaS" },
+  { value: "agency", label: "Agency / Consulting" },
+  { value: "ecommerce", label: "E-commerce" },
+  { value: "fintech", label: "Fintech" },
+  { value: "healthtech", label: "Healthtech" },
+  { value: "edtech", label: "Edtech" },
+  { value: "marketplace", label: "Marketplace" },
+  { value: "coaching", label: "Coaching / Info Products" },
+  { value: "other", label: "Other" },
+]
+
+// ============================================
+// CONTENT GENERATION ENGINE
+// ============================================
+
+function generateContent(data: any) {
+  const {
+    companyName = "Our Company",
+    productDescription = "",
+    targetAudience = "",
+    painPoints = "",
+    uniqueValue = "",
+    primaryGoal = "leads",
+    industry = "saas",
+    contentTone = "professional",
+  } = data
+
+  const pains = painPoints.split("\n").filter((p: string) => p.trim())
+  const mainPain = pains[0] || "common challenges in your industry"
+  const secondPain = pains[1] || "scaling efficiently"
+  const thirdPain = pains[2] || "finding the right solutions"
+
+  const toneMap: any = {
+    professional: { opener: "Here's what I've learned:", cta: "Thoughts?" },
+    casual: { opener: "Real talk:", cta: "What do you think?" },
+    bold: { opener: "Unpopular opinion:", cta: "Fight me on this 👇" },
+    educational: { opener: "Let me break this down:", cta: "Save this for later." },
+    inspiring: { opener: "This changed everything for me:", cta: "Your turn." },
+  }
+  const tone = toneMap[contentTone] || toneMap.professional
+
+  const goalCTA: any = {
+    leads: "Want to see how? Link in comments.",
+    awareness: "Follow for more insights like this.",
+    authority: "Agree or disagree? Let's discuss.",
+    sales: 'DM me "INFO" to learn more.',
+    community: "Join our community - link in bio.",
+    hiring: "We're hiring. Check out our careers page.",
+  }
+
+  const hashtags = `#${companyName.replace(/\s+/g, "")} #${industry === "saas" ? "SaaS" : industry} #BuildingInPublic`
+
+  const linkedin = [
+    {
+      id: 1,
+      title: "Origin Story",
+      pillar: "Founder Story",
+      status: "ready" as const,
+      content: `Why I built ${companyName}:
+
+${mainPain}
+
+I watched this problem destroy productivity for years. Everyone had the same complaints. Nobody was fixing it the right way.
+
+${tone.opener}
+
+The existing solutions were:
+• Too complex for most teams
+• Too expensive for the value
+• Built by people who never experienced the problem
+
+So we built ${companyName}.
+
+${uniqueValue || "We focused on what actually matters - solving the core problem without the bloat."}
+
+3 lessons from the journey:
+
+1. Talk to 100 customers before writing code
+2. Ship ugly, iterate fast
+3. Your first version will be embarrassing - launch anyway
+
+What made you start your company?
+
+${hashtags} #FounderJourney`,
+    },
+    {
+      id: 2,
+      title: "Biggest Lesson",
+      pillar: "Founder Story",
+      status: "review" as const,
+      content: `The biggest lesson from building ${companyName}:
+
+Your first version will be embarrassing. Ship it anyway.
+
+Our MVP had:
+• Bugs everywhere
+• Missing features customers wanted
+• UI that made designers cry
+
+But we also had:
+✅ Real users giving real feedback
+✅ Data on what actually mattered
+✅ Momentum that perfectionism kills
+
+If we'd waited for "ready," we'd still be waiting.
+
+The gap between "ready" and "perfect" is infinite.
+The gap between "shipped" and "good enough" is one iteration.
+
+What's something you shipped before it was ready?
+
+${tone.cta}
+
+${hashtags}`,
+    },
+    {
+      id: 3,
+      title: "Why Now",
+      pillar: "Founder Story",
+      status: "ready" as const,
+      content: `People ask: "Why build ${companyName} now?"
+
+The timing wasn't random.
+
+3 things converged:
+
+1. The problem got worse
+${mainPain} - this pain point has been growing for years. COVID accelerated it.
+
+2. Technology caught up
+What used to require a team of 10 can now be done with modern tools.
+
+3. The old solutions stopped working
+Legacy players got comfortable. They stopped innovating.
+
+${companyName} exists because the market was ready for something new.
+
+Timing isn't everything. But it's a lot.
+
+When did you realize it was "time" for your idea?
+
+${hashtags}`,
+    },
+    {
+      id: 4,
+      title: "Problem Agitation",
+      pillar: "Industry Insights",
+      status: "review" as const,
+      content: `${tone.opener}
+
+Most ${industry} companies are solving the wrong problem.
+
+They focus on:
+❌ Adding more features nobody asked for
+❌ Hiring more people instead of fixing processes
+❌ Throwing money at ads without strategy
+
+When they should focus on:
+✅ Understanding the real pain point
+✅ Building systems that scale
+✅ Creating value before capturing it
+
+${mainPain} isn't a feature problem.
+
+It's a mindset problem.
+
+Here's what actually works:
+
+1. Start with the outcome your customer wants
+2. Work backwards to the simplest path
+3. Remove everything that doesn't serve that path
+
+What would you add?
+
+${hashtags} #ThoughtLeadership`,
+    },
+    {
+      id: 5,
+      title: "Framework Post",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `The 5-step framework we use at ${companyName}:
+
+Step 1: Define the problem (specifically)
+Most teams skip this. They think they know.
+They don't. Write it down.
+
+Step 2: Map your current state
+Where are you now? What's working? What's broken?
+Be brutally honest.
+
+Step 3: Design the ideal state
+Where do you want to be in 90 days?
+What does success look like?
+
+Step 4: Build the bridge
+What's the minimum viable path?
+Cut everything else.
+
+Step 5: Execute and iterate
+Ship fast. Learn faster.
+Adjust weekly based on data.
+
+This framework has helped ${targetAudience || "our customers"} consistently hit their goals.
+
+The secret? It's not the framework.
+It's the discipline to follow it.
+
+Save this. You'll need it.
+
+${hashtags} #Framework`,
+    },
+    {
+      id: 6,
+      title: "Contrarian Take",
+      pillar: "Industry Insights",
+      status: "review" as const,
+      content: `Controversial opinion:
+
+Stop "building in public."
+
+At least the way most people do it.
+
+Here's what I mean:
+
+❌ Sharing every revenue milestone
+❌ Posting screenshots of MRR charts
+❌ Making everything about the numbers
+
+That's not building in public.
+That's humble bragging in public.
+
+✅ Real building in public:
+• Sharing the failures (not just wins)
+• Teaching what you learned
+• Being honest about what's hard
+• Helping others avoid your mistakes
+
+The best content makes people feel less alone.
+Not more impressed by your success.
+
+What do you think? Overrated or underrated?
+
+${hashtags}`,
+    },
+    {
+      id: 7,
+      title: "Industry Trend",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `3 trends reshaping ${industry} in 2025:
+
+1. AI is table stakes, not a differentiator
+Everyone has AI now. The winners will be those who implement it thoughtfully, not those who slap "AI-powered" on everything.
+
+2. Consolidation is coming
+Too many tools. Buyers are exhausted. Platforms that do 3 things well will beat point solutions.
+
+3. Community > Content
+Content is saturated. The new moat is community. People want to belong, not just consume.
+
+How ${companyName} is adapting:
+${uniqueValue ? uniqueValue.substring(0, 100) + "..." : "We're building for the long game."}
+
+Which trend do you think matters most?
+
+${hashtags} #Trends`,
+    },
+    {
+      id: 8,
+      title: "How-To Guide",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `How to ${primaryGoal === "leads" ? "generate 50+ qualified leads" : primaryGoal === "awareness" ? "build brand awareness" : "get results"} in 30 days:
+
+Without spending money on ads
+
+Step 1: Pick ONE platform
+LinkedIn if B2B. Twitter if building in public.
+Don't spread yourself thin.
+
+Step 2: Post daily for 30 days
+Not promotional. Valuable.
+Teach what you know.
+
+Step 3: Comment on 20 posts per day
+From ${targetAudience || "your target audience"}.
+Add value. Don't pitch.
+
+Step 4: DM 5 engaged followers weekly
+Start conversations. Be human.
+Ask questions. Listen.
+
+Step 5: Create ONE lead magnet
+Solve a specific problem.
+Give it away for email addresses.
+
+That's it. No fancy funnels.
+
+We did this for 90 days before our first customer.
+Now we have hundreds.
+
+Your turn.
+
+${hashtags}`,
+    },
+    {
+      id: 9,
+      title: "Milestone Post",
+      pillar: "Growth Metrics",
+      status: "ready" as const,
+      content: `${companyName} update:
+
+📈 Last 30 days:
+• New customers: +47
+• Revenue: +32% MoM
+• NPS: 72 (up from 64)
+
+But here's what the numbers don't tell you:
+
+Every single customer came from:
+• Word of mouth referrals
+• Content that helped people
+• Building in public
+
+We spent $0 on paid ads last month.
+
+Not because paid doesn't work.
+Because organic works better when you:
+
+1. Actually solve a real problem
+2. Share your journey authentically
+3. Help people before asking for anything
+
+The best marketing strategy?
+
+Build something people want to tell their friends about.
+
+${goalCTA[primaryGoal]}
+
+${hashtags} #Growth`,
+    },
+    {
+      id: 10,
+      title: "Year in Review",
+      pillar: "Growth Metrics",
+      status: "review" as const,
+      content: `${companyName} - what a year:
+
+January: Just an idea
+March: First MVP shipped
+May: First paying customer
+July: Hit $10K MRR
+October: Team of 5
+December: Profitable
+
+The unsexy truth?
+
+90% of those months felt like failure.
+
+• Missed targets
+• Features that flopped
+• Customers who churned
+• Doubts about everything
+
+The 10% that felt like success?
+Those came from the 90% of "failures."
+
+If you're in the hard part right now:
+
+Keep going.
+The compounding hasn't kicked in yet.
+
+What was your biggest win this year?
+
+${hashtags}`,
+    },
+    {
+      id: 11,
+      title: "Customer Story",
+      pillar: "Community Wins",
+      status: "ready" as const,
+      content: `Customer spotlight 🎉
+
+One of our ${targetAudience || "customers"} just shared their results:
+
+Before ${companyName}:
+• ${mainPain}
+• Wasting 15+ hours weekly on manual work
+• Missing opportunities constantly
+
+After 60 days:
+• Workflow completely streamlined
+• 15+ hours saved per week
+• Finally focusing on growth
+
+Their exact words:
+
+"I wish we found ${companyName} six months ago. We would have saved ourselves so much pain."
+
+This is why we do what we do.
+
+Not to build features.
+Not to raise money.
+Not to hit vanity metrics.
+
+To help people get real results.
+
+${goalCTA[primaryGoal]}
+
+${hashtags} #CustomerSuccess`,
+    },
+    {
+      id: 12,
+      title: "Testimonial Thread",
+      pillar: "Community Wins",
+      status: "ready" as const,
+      content: `What our customers say about ${companyName}:
+
+"Finally, something that actually works." - Marketing Director
+
+"ROI in the first week. Not kidding." - Startup Founder
+
+"My team loves it. Adoption was instant." - VP of Operations
+
+"Support is incredible. They actually care." - Small Business Owner
+
+"Why didn't this exist 5 years ago?" - Agency Owner
+
+But my favorite feedback?
+
+"It just... makes sense."
+
+That's what we optimize for.
+
+Not complexity. Simplicity.
+Not features. Outcomes.
+Not impressive. Useful.
+
+Thank you to everyone who's taken a chance on us.
+
+We're just getting started.
+
+${hashtags}`,
+    },
+    {
+      id: 13,
+      title: "Product Update",
+      pillar: "Product Journey",
+      status: "review" as const,
+      content: `New in ${companyName} this week:
+
+🚀 What we shipped:
+
+1. [Feature name] - Save 2+ hours per week
+Finally automated the thing everyone complained about.
+
+2. Improved onboarding
+New users now see value in under 5 minutes.
+
+3. Performance boost
+Everything is 40% faster. You'll notice.
+
+🔧 What we fixed:
+• That annoying bug (you know the one)
+• Mobile experience improvements
+• Better error messages
+
+📋 What's next:
+• Integration with [popular tool]
+• Advanced analytics dashboard
+• Team collaboration features
+
+Feedback drives our roadmap.
+
+What would make ${companyName} 10x better for you?
+
+${hashtags} #ProductUpdate`,
+    },
+    {
+      id: 14,
+      title: "How It Works",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `How ${companyName} works in 60 seconds:
+
+${productDescription || "We solve the problem you hate dealing with."}
+
+Step 1: Connect your accounts (2 minutes)
+No complex setup. No IT needed.
+
+Step 2: Tell us your goals
+We customize everything based on what you're trying to achieve.
+
+Step 3: Let it run
+${companyName} handles the heavy lifting.
+
+Step 4: See results
+Real metrics. Real impact. Real fast.
+
+That's it.
+
+No learning curve.
+No implementation headaches.
+No wondering if it's working.
+
+${uniqueValue || "We built this because we hated all the alternatives."}
+
+${goalCTA[primaryGoal]}
+
+${hashtags}`,
+    },
+    {
+      id: 15,
+      title: "Why We Built X",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `Why we built [new feature]:
+
+Customer feedback:
+"I love ${companyName}, but I wish it could also do X."
+
+We heard this 50+ times.
+
+So we built it.
+
+Here's the thinking:
+
+The old way:
+• Manual, time-consuming
+• Error-prone
+• Required 3 different tools
+
+The ${companyName} way:
+• Automated, instant
+• Accurate
+• All in one place
+
+Building in public means building what people actually need.
+
+Not what we think is cool.
+Not what looks good in a demo.
+What solves real problems.
+
+What feature would you add?
+
+${hashtags}`,
+    },
+    {
+      id: 16,
+      title: "Behind the Scenes",
+      pillar: "Culture/BTS",
+      status: "review" as const,
+      content: `Behind the scenes at ${companyName} this week:
+
+🔨 What we shipped:
+• New feature customers requested
+• Improved onboarding flow
+• 12 bug fixes
+
+📚 What we learned:
+• Customer feedback > our assumptions
+• Small improvements compound
+• Documentation is underrated
+
+🎯 What's next:
+• Major update coming next month
+• Expanding the team
+• More customer wins to share
+
+The unsexy truth about building:
+
+90% of the work is invisible.
+
+The bug fixes nobody notices.
+The customer calls that don't make LinkedIn.
+The iterations after the launch post.
+
+But that's where real progress happens.
+
+What's happening behind the scenes at your company?
+
+${hashtags} #BTS`,
+    },
+    {
+      id: 17,
+      title: "Team Spotlight",
+      pillar: "Culture/BTS",
+      status: "ready" as const,
+      content: `Team spotlight: [Team member name]
+
+Role: [Their role]
+
+What they do:
+"I make sure our customers actually succeed, not just buy."
+
+Favorite thing about ${companyName}:
+"We actually listen. When a customer suggests something, it often ships within weeks."
+
+Outside of work:
+[Hobby/interest]
+
+Why we hired them:
+They cared more about our mission than their title.
+
+That's the ${companyName} way.
+
+We're a small team that punches above our weight.
+
+Because we hire people who give a damn.
+
+Speaking of which - we're hiring.
+
+Link in comments if you want to join us.
+
+${hashtags} #TeamSpotlight`,
+    },
+    {
+      id: 18,
+      title: "Poll",
+      pillar: "Engagement",
+      status: "ready" as const,
+      content: `Quick question for ${targetAudience || "my network"}:
+
+What's your biggest challenge right now?
+
+🔴 ${mainPain}
+🟡 ${secondPain}
+🟢 ${thirdPain}
+🔵 Something else (comment below)
+
+I'm asking because we're planning our roadmap at ${companyName}.
+
+And we want to build what YOU need.
+
+Not what sounds good in a pitch deck.
+What actually moves the needle.
+
+Drop your vote + any context below 👇
+
+${hashtags} #Poll`,
+    },
+    {
+      id: 19,
+      title: "Hot Take Request",
+      pillar: "Engagement",
+      status: "review" as const,
+      content: `Give me your hottest take on ${industry}:
+
+I'll go first:
+
+"${tone.opener} Most companies in our space are solving a problem that doesn't exist."
+
+Now you.
+
+Rules:
+• Has to be something you actually believe
+• Bonus points if it's controversial
+• No hedge words ("I think maybe possibly")
+
+Best take gets featured in our newsletter.
+
+Go 👇
+
+${hashtags}`,
+    },
+    {
+      id: 20,
+      title: "This or That",
+      pillar: "Engagement",
+      status: "ready" as const,
+      content: `${industry} edition: This or That?
+
+Move fast vs. Move right
+Remote vs. In-office
+Bootstrapped vs. Funded
+Product-led vs. Sales-led
+Specialist vs. Generalist
+
+My answers:
+Move fast (you can fix mistakes)
+Remote (talent > location)
+Bootstrapped (until you need to go faster)
+Product-led (let the work speak)
+Generalist (especially early)
+
+What about you?
+
+${hashtags}`,
+    },
+  ]
+
+  const twitter = [
+    {
+      id: 1,
+      title: "Hook Thread",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `${mainPain}?
+
+Here's how to fix it in 30 days (without spending money on ads):
+
+🧵👇`,
+    },
+    {
+      id: 2,
+      title: "Hot Take",
+      pillar: "Industry Insights",
+      status: "review" as const,
+      content: `hot take: most ${industry} companies are overcomplicating this
+
+the answer is simpler than you think
+
+${companyName} is proof`,
+    },
+    {
+      id: 3,
+      title: "Milestone",
+      pillar: "Growth Metrics",
+      status: "ready" as const,
+      content: `${companyName} update:
+
+✅ 100+ customers
+✅ 40% growth MoM
+✅ $0 spent on ads
+
+building in public hits different 🚀`,
+    },
+    {
+      id: 4,
+      title: "Quick Tip",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `quick tip that saved us 10+ hours/week at ${companyName}:
+
+stop doing it manually.
+
+automate it.
+
+your future self will thank you.`,
+    },
+    {
+      id: 5,
+      title: "Engagement",
+      pillar: "Engagement",
+      status: "review" as const,
+      content: `if you're a ${targetAudience || "founder"}:
+
+what's the ONE thing holding you back right now?
+
+reply below. i read everything.`,
+    },
+    {
+      id: 6,
+      title: "Lesson",
+      pillar: "Founder Story",
+      status: "ready" as const,
+      content: `biggest lesson from building ${companyName}:
+
+ship embarrassing work
+
+iterate fast
+
+perfection is a trap`,
+    },
+    {
+      id: 7,
+      title: "Contrarian",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `unpopular opinion:
+
+most "best practices" in ${industry} are outdated
+
+what worked in 2020 doesn't work in 2025
+
+adapt or get left behind`,
+    },
+    {
+      id: 8,
+      title: "Value Add",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `the ${industry} playbook for 2025:
+
+1. solve one problem really well
+2. let customers do your marketing
+3. build community, not just product
+
+that's it. that's the strategy.`,
+    },
+    {
+      id: 9,
+      title: "Story",
+      pillar: "Founder Story",
+      status: "review" as const,
+      content: `6 months ago: idea on a napkin
+
+today: ${companyName} is helping 100+ companies
+
+the secret?
+
+we started before we were ready.`,
+    },
+    {
+      id: 10,
+      title: "CTA",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `tired of ${mainPain.toLowerCase()}?
+
+we built ${companyName} to fix exactly that.
+
+DM me "INFO" and I'll show you how it works.`,
+    },
+  ]
+
+  const threads = [
+    {
+      id: 1,
+      title: "Full Journey Thread",
+      pillar: "Founder Story",
+      status: "ready" as const,
+      content: `How we built ${companyName} from idea to 100+ customers:
+
+A thread 🧵
+
+---
+
+1/ The problem was clear:
+
+${mainPain}
+
+Everyone was doing it the hard way. There had to be a better way.
+
+---
+
+2/ We asked: what if we could...
+
+${uniqueValue?.split(".")[0] || "Build something that actually works"}?
+
+That question changed everything.
+
+---
+
+3/ First, we validated:
+
+• Talked to 50+ potential customers
+• Found the common thread
+• Identified must-have features
+
+No code. Just conversations.
+
+---
+
+4/ Then we built MVP in 30 days:
+
+• Ugly but functional
+• Core features only
+• Real users testing daily
+
+Shipped embarrassing. Iterated fast.
+
+---
+
+5/ What we learned:
+
+• Speed > perfection
+• Feedback > assumptions
+• Focus > features
+
+The magic is in the iteration.
+
+---
+
+6/ Results so far:
+
+• 100+ customers
+• 40% monthly growth
+• Profitable
+
+And we're just getting started.
+
+---
+
+7/ If you're building something:
+
+Ship fast.
+Listen hard.
+Iterate always.
+
+That's the playbook.
+
+Follow for more ${companyName} updates.
+
+---
+
+8/ Want to try ${companyName}?
+
+Link in bio.
+
+Or DM me your use case - happy to chat.`,
+    },
+    {
+      id: 2,
+      title: "Framework Thread",
+      pillar: "Industry Insights",
+      status: "review" as const,
+      content: `The exact framework we use at ${companyName} to ${primaryGoal === "leads" ? "generate leads" : "drive results"}:
+
+(Stolen from 5 years of trial and error)
+
+🧵
+
+---
+
+1/ Step 1: Get crystal clear on the problem
+
+Not "we help businesses grow"
+
+More like "we help ${targetAudience} solve ${mainPain}"
+
+Specific > generic. Always.
+
+---
+
+2/ Step 2: Validate before building
+
+Talk to 20 potential customers.
+
+Ask: "Would you pay for this?"
+
+If <15 say yes enthusiastically, go back to step 1.
+
+---
+
+3/ Step 3: Build the smallest possible version
+
+What's the ONE feature that solves the core problem?
+
+Build that. Nothing else.
+
+Ship in 30 days or less.
+
+---
+
+4/ Step 4: Get 10 design partners
+
+People who will use it, give feedback, and forgive the bugs.
+
+Treat them like gold. They are.
+
+---
+
+5/ Step 5: Iterate weekly
+
+Every Friday: What did we learn? What do we ship next?
+
+Speed of iteration = speed of success.
+
+---
+
+6/ Step 6: Document everything
+
+What worked. What didn't. Why.
+
+Your future self will thank you.
+
+---
+
+7/ This framework took us from idea to ${companyName} in 6 months.
+
+It's not magic.
+
+It's just disciplined execution.
+
+---
+
+8/ Want the full playbook?
+
+Drop a "🔥" and I'll DM you our internal doc.`,
+    },
+    {
+      id: 3,
+      title: "Mistakes Thread",
+      pillar: "Founder Story",
+      status: "ready" as const,
+      content: `7 mistakes we made building ${companyName} (so you don't have to):
+
+🧵
+
+---
+
+1/ Mistake #1: Building before validating
+
+We spent 2 months on a feature nobody wanted.
+
+Lesson: Talk to customers first. Always.
+
+---
+
+2/ Mistake #2: Trying to please everyone
+
+We added features for edge cases.
+
+Result? Confusing product, unfocused team.
+
+Lesson: Say no more than yes.
+
+---
+
+3/ Mistake #3: Hiring too fast
+
+We hired for skills, not values.
+
+It cost us 6 months of progress.
+
+Lesson: Culture fit > resume.
+
+---
+
+4/ Mistake #4: Ignoring distribution
+
+We built a great product and expected people to find it.
+
+They didn't.
+
+Lesson: Distribution IS the product.
+
+---
+
+5/ Mistake #5: Perfectionism
+
+We delayed launches waiting for "ready."
+
+"Ready" never came.
+
+Lesson: Ship it ugly. Fix it later.
+
+---
+
+6/ Mistake #6: Comparing to others
+
+We obsessed over competitor features.
+
+Distracted us from our own vision.
+
+Lesson: Run your own race.
+
+---
+
+7/ Mistake #7: Not asking for help
+
+We thought we had to figure it out alone.
+
+Wrong.
+
+Lesson: Find mentors. Ask questions. Be humble.
+
+---
+
+8/ Every mistake taught us something.
+
+${companyName} exists because of these failures, not despite them.
+
+What's the biggest mistake you've made building your company?`,
+    },
+  ]
+
+  const email = [
+    {
+      id: 1,
+      title: "Welcome Email",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `Subject: Welcome to ${companyName} - Here's what's next
+
+Hey [First Name],
+
+You just made a great decision.
+
+Welcome to ${companyName}.
+
+Here's what happens next:
+
+Over the next few days, I'll send you:
+• A quick-start guide (get results in under 5 minutes)
+• Our best resources
+• Tips from power users
+
+But first, one quick thing:
+
+👉 [PRIMARY CTA BUTTON]
+
+This takes 2 minutes and will 10x your results.
+
+Questions? Just reply to this email.
+
+I read every response personally.
+
+Talk soon,
+[Your name]
+Founder, ${companyName}
+
+P.S. ${mainPain}? You're in exactly the right place.`,
+    },
+    {
+      id: 2,
+      title: "Value Email",
+      pillar: "Industry Insights",
+      status: "review" as const,
+      content: `Subject: The #1 mistake ${targetAudience || "most people"} make
+
+Hey [First Name],
+
+Quick question:
+
+Are you making this mistake?
+
+${mainPain}
+
+Most people try to fix this by:
+• Throwing more time at it
+• Hiring more people
+• Using more tools
+
+But that just makes it worse.
+
+Here's what actually works:
+
+1. Focus on the root cause, not symptoms
+2. Automate the repetitive stuff
+3. Measure what matters
+
+${companyName} was built to make this easy.
+
+Want to see how?
+
+👉 [CTA BUTTON: See How It Works]
+
+Best,
+[Your name]
+
+P.S. Reply with your biggest challenge. I respond to every email.`,
+    },
+    {
+      id: 3,
+      title: "Case Study Email",
+      pillar: "Community Wins",
+      status: "ready" as const,
+      content: `Subject: How [Customer] got [specific result]
+
+Hey [First Name],
+
+Quick story:
+
+[Customer Name] came to us 60 days ago.
+
+They were dealing with:
+• ${mainPain}
+• Wasting 10+ hours weekly
+• Frustrated with every "solution" they tried
+
+Sound familiar?
+
+Here's what happened after they started using ${companyName}:
+
+✅ [Specific result #1]
+✅ [Specific result #2]
+✅ [Specific result #3]
+
+Their exact words:
+
+"I wish we found ${companyName} sooner. It's exactly what we needed."
+
+Want similar results?
+
+👉 [CTA BUTTON: Start Your Free Trial]
+
+Best,
+[Your name]
+
+P.S. We have 50+ more stories like this. Reply if you want to hear them.`,
+    },
+    {
+      id: 4,
+      title: "Objection Handler",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `Subject: "I don't have time for another tool"
+
+Hey [First Name],
+
+I hear this a lot:
+
+"${companyName} looks great, but I don't have time to learn another tool."
+
+I get it. Tool fatigue is real.
+
+But here's what our customers say:
+
+"I was skeptical too. Then I set it up in 10 minutes and saved 5 hours that week." - [Customer]
+
+${companyName} isn't another tool to manage.
+
+It's a tool that manages things FOR you.
+
+• Setup: Under 10 minutes
+• Learning curve: Almost none
+• Time saved: 5-10+ hours/week
+
+Still not sure?
+
+Try it free for 14 days. No credit card required.
+
+If it doesn't save you time in week 1, I'll personally help you find a better solution.
+
+👉 [CTA BUTTON: Try It Free]
+
+Best,
+[Your name]`,
+    },
+    {
+      id: 5,
+      title: "Urgency Email",
+      pillar: "Product Journey",
+      status: "review" as const,
+      content: `Subject: Quick question, [First Name]
+
+Hey [First Name],
+
+I noticed you signed up for ${companyName} but haven't started yet.
+
+No pressure - just curious:
+
+What's holding you back?
+
+A) Not sure how to get started
+B) Not sure if it's right for me
+C) Just been busy
+D) Something else
+
+Reply with A, B, C, or D and I'll personally help.
+
+If it's A - I'll send you our 5-minute quickstart guide.
+If it's B - I'll hop on a quick call to see if we're a fit.
+If it's C - Totally get it. This email will be here when you're ready.
+If it's D - Tell me what's up. I want to help.
+
+${companyName} has helped hundreds of ${targetAudience || "companies"} solve ${mainPain.toLowerCase()}.
+
+I don't want you to miss out.
+
+👉 [CTA BUTTON: Get Started Now]
+
+Best,
+[Your name]
+Founder, ${companyName}
+
+P.S. Just reply to this email. I read and respond to every one.`,
+    },
+  ]
+
+  const ads = [
+    {
+      id: 1,
+      title: "Problem-Agitate",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `[HEADLINE]
+Still struggling with ${mainPain.toLowerCase()}?
+
+[BODY]
+${targetAudience || "Smart teams"} are switching to ${companyName}.
+
+✅ ${uniqueValue?.split(".")[0] || "Finally, a solution that works"}
+✅ Setup in under 10 minutes
+✅ See results in week 1
+
+Join 100+ companies who've made the switch.
+
+[CTA]
+Try Free for 14 Days →`,
+    },
+    {
+      id: 2,
+      title: "Social Proof",
+      pillar: "Community Wins",
+      status: "review" as const,
+      content: `[HEADLINE]
+"${companyName} changed everything for us."
+
+[BODY]
+Join 100+ ${targetAudience || "companies"} who've already made the switch.
+
+Results they're seeing:
+• 10+ hours saved weekly
+• 40% improvement in [key metric]
+• ROI in under 30 days
+
+[CTA]
+Start Your Free Trial →`,
+    },
+    {
+      id: 3,
+      title: "Curiosity",
+      pillar: "Industry Insights",
+      status: "ready" as const,
+      content: `[HEADLINE]
+Why ${targetAudience || "top performers"} are ditching [old solution]
+
+[BODY]
+The old way of handling ${mainPain.toLowerCase()} is broken.
+
+${companyName} is the fix.
+
+• Works in minutes, not months
+• No technical skills required
+• Results guaranteed
+
+[CTA]
+See How It Works →`,
+    },
+    {
+      id: 4,
+      title: "Direct Response",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `[HEADLINE]
+${mainPain}? There's a better way.
+
+[BODY]
+${companyName} helps ${targetAudience || "teams like yours"}:
+
+→ Save 10+ hours every week
+→ Eliminate manual busywork
+→ Focus on what actually matters
+
+No long contracts. No complex setup.
+Just results.
+
+[CTA]
+Get Started Free →`,
+    },
+    {
+      id: 5,
+      title: "Retargeting",
+      pillar: "Product Journey",
+      status: "ready" as const,
+      content: `[HEADLINE]
+Still thinking about ${companyName}?
+
+[BODY]
+Here's what you're missing:
+
+✅ 100+ happy customers
+✅ 4.9/5 average rating
+✅ 14-day free trial (no card required)
+
+The only risk is waiting.
+
+${mainPain} won't solve itself.
+
+[CTA]
+Try ${companyName} Today →`,
+    },
+  ]
+
+  return { linkedin, twitter, threads, email, ads }
+}
+
+// ============================================
+// ONBOARDING WIZARD
+// ============================================
+
+function OnboardingWizard({ onComplete }: { onComplete: (data: any, content: any) => void }) {
+  const [step, setStep] = useState(1)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [aiModalStep, setAiModalStep] = useState<1 | 2>(1)
+  const [aiPromptCopied, setAiPromptCopied] = useState(false)
+  const [aiResponse, setAiResponse] = useState("")
+  const [showAIModal, setShowAIModal] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [showSettings, setShowSettings] = useState(false) // Declared setShowSettings
+  const [showUserMenu, setShowUserMenu] = useState(false) // Declared showUserMenu
+
+  const [formData, setFormData] = useState(() => {
+    const saved = loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
+    return (
+      saved || {
+        companyName: "",
+        website: "",
+        industry: "",
+        productDescription: "",
+        logo: "",
+        targetAudience: "",
+        jobTitles: "",
+        companySize: "",
+        painPoints: "",
+        uniqueValue: "",
+        keyBenefits: "",
+        competitors: "",
+        pricingModel: "",
+        currentChannels: [] as string[],
+        contentFrequency: "",
+        teamSize: "",
+        primaryGoal: "",
+        contentTone: "",
+        targetPlatforms: [] as string[],
+      }
+    )
+  })
+
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.FORM_DATA, formData)
+  }, [formData])
+
+  const update = (field: string, value: any) => setFormData((prev) => ({ ...prev, [field]: value }))
+
+  const generateAIPromptText = () => {
+    const companyName = formData.companyName || "[Your Company Name]"
+    const website = formData.website || "[Your Website]"
+
+    return `I need help filling out a GTM content engine for my company. Answer based on what you know about us:
+
+Company: ${companyName}
+Website: ${website}
+
+Provide answers in this EXACT format:
+
+1. PRODUCT DESCRIPTION:
+[2-3 sentences about what the product/service does]
+
+2. TARGET AUDIENCE:
+[Describe the ideal customer profile]
+
+3. JOB TITLES TO TARGET:
+[3-5 job titles, comma-separated]
+
+4. TOP 3 PAIN POINTS:
+[Pain point 1]
+[Pain point 2]
+[Pain point 3]
+
+5. UNIQUE VALUE PROPOSITION:
+[What makes this different from competitors]
+
+6. KEY BENEFITS:
+[Benefit 1]
+[Benefit 2]
+[Benefit 3]
+
+7. MAIN COMPETITORS:
+[2-4 competitors, comma-separated]
+
+8. INDUSTRY:
+[One of: saas, agency, ecommerce, fintech, healthtech, edtech, marketplace, coaching, other]
+
+9. COMPANY SIZE TARGET:
+[One of: 1-10, 11-50, 51-200, 201-1000, 1000+]
+
+10. PRIMARY GOAL:
+[One of: leads, awareness, authority, sales, community, hiring]
+
+11. CONTENT TONE:
+[One of: professional, casual, bold, educational, inspiring]`
+  }
+
+  const generateAIPrompt = () => {
+    const industry = formData.industry
+      ? INDUSTRIES.find((i) => i.value === formData.industry)?.label || formData.industry
+      : "[your industry]"
+    return `I need help filling out a GTM content engine for my company. Please answer each question based on what you know about us:
+
+Company: ${formData.companyName || "[Company Name]"}
+Website: ${formData.website || "[Website URL]"}
+
+Please provide answers in this exact format so I can copy them back:
+
+1. PRODUCT DESCRIPTION (2-3 sentences):
+[Describe what the product/service does and who it's for]
+
+2. TARGET AUDIENCE:
+[Describe the ideal customer profile - who buys this]
+
+3. JOB TITLES TO TARGET:
+[List 3-5 job titles, comma-separated]
+
+4. TOP 3 PAIN POINTS (one per line):
+[Pain point 1]
+[Pain point 2]
+[Pain point 3]
+
+5. UNIQUE VALUE PROPOSITION:
+[What makes this different from competitors]
+
+6. KEY BENEFITS (top 3):
+[Benefit 1]
+[Benefit 2]
+[Benefit 3]
+
+7. MAIN COMPETITORS:
+[List 2-4 competitors, comma-separated]
+
+Based on your knowledge of ${formData.companyName || "[Company Name]"} and the ${industry} space, fill this out accurately.`
+  }
+
+  const copyAIPrompt = () => {
+    navigator.clipboard.writeText(generateAIPromptText())
+    setAiPromptCopied(true)
+    setTimeout(() => setAiPromptCopied(false), 2000)
+  }
+
+  const handleAIAutofill = () => {
+    const parsed = parseAIResponse(aiResponse)
+
+    // Update formData with all parsed values
+    setFormData((prev) => ({
+      ...prev,
+      productDescription: parsed.productDescription || prev.productDescription,
+      targetAudience: parsed.targetAudience || prev.targetAudience,
+      jobTitles: parsed.jobTitles || prev.jobTitles,
+      painPoints: parsed.painPoints || prev.painPoints,
+      uniqueValue: parsed.uniqueValue || prev.uniqueValue,
+      keyBenefits: parsed.keyBenefits || prev.keyBenefits,
+      competitors: parsed.competitors || prev.competitors,
+      industry: parsed.industry || prev.industry,
+      companySize: parsed.companySize || prev.companySize,
+      primaryGoal: parsed.primaryGoal || prev.primaryGoal,
+      contentTone: parsed.contentTone || prev.contentTone,
+      targetPlatforms: ["linkedin", "twitter", "email"], // Set default platforms
+    }))
+
+    // Close modal and jump to Step 5
+    setShowAIModal(false)
+    setAiModalStep(1)
+    setAiResponse("")
+    setStep(5)
+
+    // Show success feedback
+    setTimeout(() => {
+      alert("✓ Autofilled from AI response")
+    }, 100)
+  }
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    alert("Prompt copied to clipboard!")
+  }
+
+  const handleComplete = async () => {
+    setIsGenerating(true)
+    const interval = setInterval(() => {
+      setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 15))
+    }, 400)
+
+    await new Promise((r) => setTimeout(r, 3000))
+    const content = generateContent(formData)
+
+    clearInterval(interval)
+    setProgress(100)
+    setTimeout(() => onComplete(formData, content), 500)
+  }
+
+  const canProceed = () => {
+    switch (step) {
+      case 1:
+        return formData.companyName && formData.productDescription && formData.industry // Added industry as required
+      case 2:
+        return formData.targetAudience && formData.painPoints
+      case 3:
+        return formData.uniqueValue
+      case 4:
+        return true
+      case 5:
+        return formData.primaryGoal && formData.targetPlatforms.length > 0
+      default:
+        return true
+    }
+  }
+
+  const steps = [
+    { num: 1, title: "Company", icon: Building2 },
+    { num: 2, title: "Audience", icon: Users },
+    { num: 3, title: "Positioning", icon: Target },
+    { num: 4, title: "Current State", icon: BarChart3 },
+    { num: 5, title: "Goals", icon: Trophy },
+  ]
+
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        update("logo", reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  if (isGenerating) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <img src="/images/campusgtm-20logo.png" alt="CampusGTM" className="w-12 h-12 object-contain" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Generating Your Content Engine</h2>
+          <p className="text-gray-500 mb-6">Creating personalized content based on your business...</p>
+          <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+            <div
+              className="bg-gray-900 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="space-y-2 text-sm text-gray-500">
+            {progress > 10 && <p>✓ Analyzing your ICP and pain points...</p>}
+            {progress > 30 && <p>✓ Crafting positioning and messaging...</p>}
+            {progress > 50 && <p>✓ Generating LinkedIn content...</p>}
+            {progress > 70 && <p>✓ Creating Twitter threads...</p>}
+            {progress > 90 && <p>✓ Finalizing your content library...</p>}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+      <div className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col">
+        <div className="flex items-center gap-3 p-4 border-b border-gray-200">
+          <div className="relative">
+            {formData.logo ? (
+              <img
+                src={formData.logo || "/placeholder.svg"}
+                alt={formData.companyName}
+                className="w-10 h-10 rounded-lg object-contain"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                <Building2 size={20} className="text-gray-400" />
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="font-semibold text-gray-900 text-sm">{formData.companyName || "My Company"}</div>
+            <div className="text-xs text-gray-500">{formData.targetPlatforms.length} platforms</div>
+          </div>
+        </div>
+        <nav className="flex-1 p-3 space-1">
+          {[
+            { id: "library", icon: FileText, label: "Content Library", badge: formData.targetPlatforms.length },
+            { id: "calendar", icon: Calendar, label: "90-Day Calendar" },
+            { id: "tasks", icon: CheckSquare, label: "Daily Tasks" },
+            { id: "pillars", icon: Target, label: "Content Pillars" },
+            { id: "metrics", icon: BarChart3, label: "Metrics & KPIs" },
+          ].map((n) => (
+            <button
+              key={n.id}
+              onClick={() => setStep(n.num)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition ${
+                step === n.num
+                  ? "bg-transparent text-gray-900 font-medium border-l-2 border-gray-900 rounded-l-none"
+                  : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <n.icon size={18} />
+              <span>{n.label}</span>
+              {n.badge && <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{n.badge}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="p-3 border-t border-gray-200 space-1">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+          >
+            <Settings size={18} />
+            <span>Settings</span>
+          </button>
+          <button
+            onClick={onComplete} // This should likely be the reset function, but for now, just call onComplete
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+          >
+            <LogOut size={18} />
+            <span>Reset</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="md:hidden bg-white border-b border-gray-200 p-4 sticky top-0 z-40">
+        <div className="flex items-center justify-between">
+          <button onClick={() => setShowMobileMenu(true)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <Menu size={20} />
+          </button>
+          <div className="flex items-center gap-2">
+            {formData.logo ? (
+              <img
+                src={formData.logo || "/placeholder.svg"}
+                alt={formData.companyName}
+                className="w-8 h-8 rounded object-contain"
+              />
+            ) : (
+              <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
+                <Building2 size={16} className="text-gray-400" />
+              </div>
+            )}
+            <span className="text-sm font-bold">{formData.companyName || "My Company"}</span>
+          </div>
+          <button onClick={() => setShowUserMenu(!showUserMenu)} className="p-2 hover:bg-gray-100 rounded-lg relative">
+            <User size={20} />
+          </button>
+        </div>
+      </div>
+
+      {showMobileMenu && (
+        <div className="md:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setShowMobileMenu(false)}>
+          <div className="bg-white w-64 h-full flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {formData.logo ? (
+                  <img
+                    src={formData.logo || "/placeholder.svg"}
+                    alt={formData.companyName}
+                    className="w-10 h-10 rounded-lg object-contain"
+                  />
+                ) : (
+                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <Building2 size={20} className="text-gray-400" />
+                  </div>
+                )}
+                <div>
+                  <h1 className="text-sm font-bold text-gray-900">{formData.companyName || "My Company"}</h1>
+                  <p className="text-xs text-gray-500">Content Engine</p>
+                </div>
+              </div>
+              <button onClick={() => setShowMobileMenu(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+
+            <nav className="flex-1 p-4 space-1">
+              {[
+                { id: "library", label: "Content Library", icon: FileText, badge: formData.targetPlatforms.length },
+                { id: "calendar", label: "Calendar", icon: Calendar },
+                { id: "tasks", label: "Daily Tasks", icon: CheckSquare, badge: `${formData.targetPlatforms.length}/6` },
+                { id: "pillars", label: "Content Pillars", icon: Target },
+                { id: "metrics", label: "Metrics", icon: TrendingUp },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setStep(steps.find((s) => s.title.toLowerCase().replace(" ", "") === item.id)?.num || 1)
+                    setShowMobileMenu(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left ${
+                    step === steps.find((s) => s.title.toLowerCase().replace(" ", "") === item.id)?.num
+                      ? "bg-gray-50 text-gray-900 border-l-4 border-gray-900 font-medium"
+                      : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  <item.icon size={18} />
+                  <span className="text-sm">{item.label}</span>
+                  {item.badge && (
+                    <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{item.badge}</span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            <div className="p-4 border-t border-gray-200 space-1">
+              <button
+                onClick={() => {
+                  setShowSettings(true)
+                  setShowMobileMenu(false)
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
+              >
+                <Settings size={18} />
+                <span className="text-sm">Settings</span>
+              </button>
+              <button
+                onClick={() => {
+                  onComplete() // This should likely be the reset function
+                  setShowMobileMenu(false)
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
+              >
+                <LogOut size={18} />
+                <span className="text-sm">Reset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="hidden md:flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Home size={16} />
+              <ChevronRight size={14} />
+              <span className="text-gray-900 font-medium">
+                {step === 1
+                  ? "Company"
+                  : step === 2
+                    ? "Audience"
+                    : step === 3
+                      ? "Positioning"
+                      : step === 4
+                        ? "Current State"
+                        : "Goals"}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <Building2 size={16} />
+              <span className="font-medium">{formData.companyName}</span>
+              <span className="text-gray-300">•</span>
+              <span className="text-gray-500">{formData.industry}</span>
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-2 hover:bg-gray-50 rounded-lg p-1.5"
+              >
+                {formData.logo ? (
+                  <img
+                    src={formData.logo || "/placeholder.svg"}
+                    alt="User"
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                    <User size={16} className="text-gray-600" />
+                  </div>
+                )}
+              </button>
+              {showUserMenu && (
+                <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-10">
+                  <button
+                    onClick={onComplete} // This should likely be the reset function
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Reset Onboarding
+                  </button>
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Settings
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 md:p-8">
+          {step === 1 && (
+            <div className="space-y-6">
+              <div>
+                {/* Adjust heading size for mobile */}
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Tell us about your company</h2>
+                {/* Adjust text size for mobile */}
+                <p className="text-sm md:text-base text-gray-600">We'll use this to craft your messaging.</p>
+              </div>
+
+              {/* AI fill button moved up and styled */}
+              <div className="flex items-center gap-3 p-3 md:p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <Sparkles size={20} className="text-blue-600 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs md:text-sm text-blue-900">Want to save time? Use AI to auto-fill this form</p>
+                </div>
+                <button
+                  onClick={() => setShowAIModal(true)}
+                  className="flex-shrink-0 px-3 md:px-4 py-1.5 md:py-2 bg-blue-600 text-white text-xs md:text-sm font-medium rounded-lg hover:bg-blue-700"
+                >
+                  AI Fill
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Company Logo</label>
+                {/* Improved logo upload area styling */}
+                <div
+                  className={`border-2 border-dashed rounded-lg p-6 md:p-8 text-center cursor-pointer hover:border-gray-400 transition ${formData.logo ? "border-green-300 bg-green-50" : "border-gray-300"}`}
+                  onClick={() => document.getElementById("logo-upload")?.click()}
+                >
+                  {formData.logo ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <img
+                        src={formData.logo || "/placeholder.svg"}
+                        alt="Company Logo"
+                        className="w-20 h-20 md:w-24 md:h-24 object-contain"
+                      />
+                      <p className="text-xs md:text-sm text-green-700 font-medium">Logo uploaded</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-3 border-4 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                        <Upload size={20} className="text-gray-400" />
+                      </div>
+                      <p className="text-sm md:text-base font-medium text-gray-700 mb-1">
+                        Click to upload or drag and drop
+                      </p>
+                      <p className="text-xs md:text-sm text-gray-500">Square format recommended (PNG, JPG)</p>
+                    </>
+                  )}
+                  <input id="logo-upload" type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Company Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.companyName}
+                  onChange={(e) => update("companyName", e.target.value)}
+                  placeholder="Acme Inc."
+                  className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
+                <input
+                  type="url"
+                  value={formData.website}
+                  onChange={(e) => update("website", e.target.value)}
+                  placeholder="https://acme.com"
+                  className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Industry <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.industry}
+                  onChange={(e) => update("industry", e.target.value)}
+                  className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                >
+                  <option value="">Select</option>
+                  {INDUSTRIES.map((ind) => (
+                    <option key={ind.value} value={ind.value}>
+                      {ind.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  What does your product/service do? <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={formData.productDescription}
+                  onChange={(e) => update("productDescription", e.target.value)}
+                  placeholder="We help companies automate their customer support with AI-powered chatbots..."
+                  rows={4}
+                  className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none text-base"
+                />
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Who's your ideal customer?</h2>
+                <p className="text-sm md:text-base text-gray-600">This shapes all your content messaging.</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Target Audience Description *</label>
+                  <textarea
+                    value={formData.targetAudience}
+                    onChange={(e) => update("targetAudience", e.target.value)}
+                    placeholder="E.g., B2B SaaS founders at seed-stage startups..."
+                    rows={3}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none text-base"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Job Titles You Target</label>
+                  <input
+                    type="text"
+                    value={formData.jobTitles}
+                    onChange={(e) => update("jobTitles", e.target.value)}
+                    placeholder="CEO, VP Marketing, Head of Growth..."
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Company Size</label>
+                  <select
+                    value={formData.companySize}
+                    onChange={(e) => update("companySize", e.target.value)}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  >
+                    <option value="">Select</option>
+                    <option value="1-10">1-10 (Startup)</option>
+                    <option value="11-50">11-50 (Small)</option>
+                    <option value="51-200">51-200 (Mid-market)</option>
+                    <option value="201-1000">201-1000 (Enterprise)</option>
+                    <option value="1000+">1000+ (Large)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Top 3 Pain Points <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={formData.painPoints}
+                    onChange={(e) => update("painPoints", e.target.value)}
+                    placeholder="1. High customer support costs..."
+                    rows={4}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none text-base"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">What makes you different?</h2>
+                <p className="text-sm md:text-base text-gray-600">
+                  Your unique positioning drives content differentiation.
+                </p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Unique Value Proposition <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={formData.uniqueValue}
+                    onChange={(e) => update("uniqueValue", e.target.value)}
+                    placeholder="We automate customer support with AI, reducing response times by 80% and saving 50% on costs."
+                    rows={4}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none text-base"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Key Benefits (Top 3)</label>
+                  <textarea
+                    value={formData.keyBenefits}
+                    onChange={(e) => update("keyBenefits", e.target.value)}
+                    placeholder="1. Reduce costs by 50%&#10;2. Improve customer satisfaction by 30%&#10;3. Automate 80% of inquiries"
+                    rows={4}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none text-base"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Main Competitors</label>
+                  <input
+                    type="text"
+                    value={formData.competitors}
+                    onChange={(e) => update("competitors", e.target.value)}
+                    placeholder="Intercom, Zendesk, Drift..."
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Pricing Model</label>
+                  <select
+                    value={formData.pricingModel}
+                    onChange={(e) => update("pricingModel", e.target.value)}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  >
+                    <option value="">Select</option>
+                    <option value="freemium">Freemium</option>
+                    <option value="subscription">Subscription</option>
+                    <option value="usage">Usage-based</option>
+                    <option value="one-time">One-time</option>
+                    <option value="custom">Custom/Enterprise</option>
+                    <option value="service">Service/Retainer</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Where are you now?</h2>
+                <p className="text-sm md:text-base text-gray-600">Your current state helps us prioritize.</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Current Marketing Channels</label>
+                  {/* Responsive grid for checkboxes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {["LinkedIn", "Twitter/X", "Email", "SEO/Blog", "Paid Ads", "Podcast", "YouTube", "Events"].map(
+                      (ch) => (
+                        <label
+                          key={ch}
+                          className="flex items-center gap-2 p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formData.currentChannels.includes(ch)}
+                            onChange={(e) =>
+                              update(
+                                "currentChannels",
+                                e.target.checked
+                                  ? [...formData.currentChannels, ch]
+                                  : formData.currentChannels.filter((c) => c !== ch),
+                              )
+                            }
+                            className="h-4 w-4 text-gray-900 rounded focus:ring-gray-900"
+                          />
+                          <span className="text-sm text-gray-700">{ch}</span>
+                        </label>
+                      ),
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Content Frequency</label>
+                  <select
+                    value={formData.contentFrequency}
+                    onChange={(e) => update("contentFrequency", e.target.value)}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  >
+                    <option value="">Select frequency</option>
+                    <option value="never">Not posting yet</option>
+                    <option value="sporadic">Sporadically</option>
+                    <option value="weekly">1-2x per week</option>
+                    <option value="several">3-5x per week</option>
+                    <option value="daily">Daily</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Team Size</label>
+                  <select
+                    value={formData.teamSize}
+                    onChange={(e) => update("teamSize", e.target.value)}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  >
+                    <option value="">Select team size</option>
+                    <option value="solo">Just me</option>
+                    <option value="1-2">1-2 people</option>
+                    <option value="3-5">3-5 people</option>
+                    <option value="6+">6+ people</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">What are your goals?</h2>
+                <p className="text-sm md:text-base text-gray-600">We'll tailor content to hit these targets.</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Primary Goal <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.primaryGoal}
+                    onChange={(e) => update("primaryGoal", e.target.value)}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  >
+                    <option value="">Select primary goal</option>
+                    <option value="leads">Generate leads</option>
+                    <option value="awareness">Build awareness</option>
+                    <option value="authority">Establish authority</option>
+                    <option value="sales">Drive sales</option>
+                    <option value="community">Build community</option>
+                    <option value="hiring">Attract talent</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Content Tone</label>
+                  <select
+                    value={formData.contentTone}
+                    onChange={(e) => update("contentTone", e.target.value)}
+                    className="w-full px-4 py-2.5 md:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+                  >
+                    <option value="">Select tone</option>
+                    <option value="professional">Professional</option>
+                    <option value="casual">Casual</option>
+                    <option value="bold">Bold & contrarian</option>
+                    <option value="educational">Educational</option>
+                    <option value="inspiring">Inspiring</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Target Platforms <span className="text-red-500">*</span>
+                  </label>
+                  {/* Responsive grid for platform checkboxes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {PLATFORMS.map((p) => (
+                      <label
+                        key={p.id}
+                        className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${
+                          formData.targetPlatforms.includes(p.id)
+                            ? "border-gray-900 bg-gray-50"
+                            : "border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.targetPlatforms.includes(p.id)}
+                          onChange={(e) =>
+                            update(
+                              "targetPlatforms",
+                              e.target.checked
+                                ? [...formData.targetPlatforms, p.id]
+                                : formData.targetPlatforms.filter((x) => x !== p.id),
+                            )
+                          }
+                          className="h-4 w-4 text-gray-900 rounded focus:ring-gray-900"
+                        />
+                        <div className={`w-6 h-6 ${p.color} rounded flex items-center justify-center`}>
+                          <p.icon size={14} className="text-white" />
+                        </div>
+                        <span className="text-sm text-gray-700 font-medium">{p.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
+            {step > 1 && (
+              <button
+                onClick={() => setStep(step - 1)}
+                className="flex items-center gap-2 px-4 md:px-6 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                <ChevronLeft size={16} /> Back
+              </button>
+            )}
+            <div className="flex-1" /> {/* Push button to the right */}
+            {step < 5 ? (
+              <button
+                onClick={() => setStep(step + 1)}
+                disabled={!canProceed()}
+                className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+              >
+                Continue <ChevronRight size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={handleComplete}
+                disabled={!canProceed()}
+                className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+              >
+                <Sparkles size={16} /> Generate
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showAIModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {aiModalStep === 1 ? "Step 1: Copy this prompt" : "Step 2: Paste AI response"}
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {aiModalStep === 1
+                    ? "Copy and paste into Claude or ChatGPT"
+                    : "Paste the full response from your AI assistant"}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAIModal(false)
+                  setAiModalStep(1)
+                  setAiResponse("")
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X size={20} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {aiModalStep === 1 ? (
+                <>
+                  <textarea
+                    readOnly
+                    value={generateAIPromptText()}
+                    className="w-full h-96 px-4 py-3 border border-gray-200 rounded-lg text-sm font-mono bg-gray-50 resize-none focus:outline-none"
+                  />
+                  <div className="flex items-center gap-3 mt-4">
+                    <button
+                      onClick={copyAIPrompt}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition"
+                    >
+                      {aiPromptCopied ? (
+                        <>
+                          <Check size={18} /> Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={18} /> Copy Prompt
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setAiModalStep(2)}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                    >
+                      Next: Paste Response <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <textarea
+                    value={aiResponse}
+                    onChange={(e) => setAiResponse(e.target.value)}
+                    placeholder="Paste the full AI response here..."
+                    className="w-full h-64 px-4 py-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                  <div className="flex items-center gap-3 mt-4">
+                    <button
+                      onClick={() => setAiModalStep(1)}
+                      className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                    >
+                      <ChevronLeft size={16} /> Back
+                    </button>
+                    <button
+                      onClick={handleAIAutofill}
+                      disabled={!aiResponse.trim()}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Sparkles size={16} /> Autofill & Continue
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// DASHBOARD
+// ============================================
+
+function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => void }) {
+  const [section, setSection] = useState("library")
+  const [platform, setPlatform] = useState("linkedin")
+  const [pillar, setPillar] = useState("all")
+  const [search, setSearch] = useState("")
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const [editingPost, setEditingPost] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState("")
+  const [postStatuses, setPostStatuses] = useState<Record<string, "ready" | "review">>({})
+
+  const [showFilters, setShowFilters] = useState(false)
+  const [view, setView] = useState("dashboard") // Added view state
+  const [showBanner, setShowBanner] = useState(true) // Added showBanner state to Dashboard component where it's actually used
+  const [showSettings, setShowSettings] = useState(false) // Declared showSettings
+  const [showUserMenu, setShowUserMenu] = useState(false) // Declared showUserMenu
+
+  // Initialize state for mobile sidebar
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false)
+  const [activeView, setActiveView] = useState("content")
+  const [selectedPlatform, setSelectedPlatform] = useState("all")
+  const [selectedPillar, setSelectedPillar] = useState("all")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
+  const [editingPostId, setEditingPostId] = useState<number | null>(null)
+  const [editedContent, setEditedContent] = useState("")
+
+  const [generatedContent, setGeneratedContent] = useState<any>(() => {
+    const saved = loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT)
+    return saved || {}
+  })
+
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT, generatedContent)
+  }, [generatedContent])
+
+  useEffect(() => {
+    if (generatedContent) {
+      const statuses: Record<string, "ready" | "review"> = {}
+      Object.entries(generatedContent).forEach(([platform, posts]: [string, any]) => {
+        posts.forEach((post: any) => {
+          statuses[`${platform}-${post.id}`] = post.status || "ready"
+        })
+      })
+      setPostStatuses(statuses)
+    }
+  }, [generatedContent])
+
+  const handleRegeneratePost = (platform: string, postId: number) => {
+    // In a real app, this would call an AI API to regenerate
+    alert(`Regenerating ${platform} post #${postId}...`)
+    // For now, just mark as review
+    setPostStatuses((prev) => ({
+      ...prev,
+      [`${platform}-${postId}`]: "review",
+    }))
+  }
+
+  const handleEditPost = (platform: string, postId: number, content: string) => {
+    setEditingPost(`${platform}-${postId}`)
+    setEditContent(content)
+  }
+
+  const handleSaveEdit = (platform: string, postId: number) => {
+    // Update the content in generatedContent
+    if (generatedContent) {
+      const updatedContent = { ...generatedContent }
+      const postIndex = updatedContent[platform].findIndex((p: any) => p.id === postId)
+      if (postIndex !== -1) {
+        updatedContent[platform][postIndex].content = editContent
+        setGeneratedContent(updatedContent) // Update state
+      }
+    }
+    setEditingPost(null)
+    setEditContent("")
+  }
+
+  const togglePostStatus = (platform: string, postId: number) => {
+    const key = `${platform}-${postId}`
+    setPostStatuses((prev) => ({
+      ...prev,
+      [key]: prev[key] === "ready" ? "review" : "ready",
+    }))
+  }
+
+  const copy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(id)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const toggleDailyTask = (id: number) => {
+    const savedTasks = loadFromLocalStorage(STORAGE_KEYS.DAILY_TASKS) || {}
+    const updatedTasks = { ...savedTasks, [id]: !savedTasks[id] }
+    saveToLocalStorage(STORAGE_KEYS.DAILY_TASKS, updatedTasks)
+    // Use a state variable to manage checked tasks. Declare 'checked' state.
+    setChecked(updatedTasks)
+  }
+
+  // Declare 'checked' state variable
+  const [checked, setChecked] = useState<Record<number, boolean>>(() => {
+    return loadFromLocalStorage(STORAGE_KEYS.DAILY_TASKS) || {}
+  })
+
+  const filtered = () => {
+    let posts = generatedContent[platform] || []
+    if (pillar !== "all") posts = posts.filter((p: any) => p.pillar.toLowerCase().includes(pillar.toLowerCase()))
+    if (search)
+      posts = posts.filter(
+        (p: any) =>
+          p.title.toLowerCase().includes(search.toLowerCase()) ||
+          p.content.toLowerCase().includes(search.toLowerCase()),
+      )
+    return posts
+  }
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      importData(file, () => {
+        window.location.reload()
+      })
+    }
+  }
+
+  const clearAllData = () => {
+    if (window.confirm("Are you sure? This will delete all your data and cannot be undone.")) {
+      localStorage.clear()
+      window.location.reload()
+    }
+  }
+
+  const tasks = [
+    {
+      id: 1,
+      cat: "Content",
+      text: `Post 1 piece on ${companyData.targetPlatforms?.[0] || "LinkedIn"}`,
+      time: "9:00 AM",
+      pri: "high",
+    },
+    { id: 2, cat: "Engagement", text: "Comment on 10 posts from ICP", time: "9:30 AM", pri: "high" },
+    { id: 3, cat: "Engagement", text: "Reply to yesterday's comments", time: "10:00 AM", pri: "medium" },
+    { id: 4, cat: "Outreach", text: "Send 5 connection requests", time: "11:00 AM", pri: "medium" },
+    { id: 5, cat: "Content", text: "Schedule tomorrow's content", time: "2:00 PM", pri: "high" },
+    { id: 6, cat: "Analytics", text: "Review yesterday's performance", time: "4:00 PM", pri: "low" },
+  ]
+
+  const calendar = Array.from({ length: 12 }, (_, i) => ({
+    week: i + 1,
+    month: Math.floor(i / 4) + 1,
+    phase: i < 4 ? "Foundation" : i < 8 ? "Growth" : "Scale",
+    posts: [
+      { day: "Mon", type: "Educational", pillar: PILLARS[i % 7].name },
+      { day: "Wed", type: "Story", pillar: PILLARS[(i + 2) % 7].name },
+      { day: "Fri", type: "Engagement", pillar: PILLARS[(i + 4) % 7].name },
+    ],
+  }))
+
+  const done = Object.values(checked).filter(Boolean).length
+  const total = Object.values(generatedContent).reduce((a: number, p: any) => a + p.length, 0)
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+      <div className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col">
+        <div className="flex items-center gap-3 p-4 border-b border-gray-200">
+          <div className="relative">
+            {companyData.logo ? (
+              <img
+                src={companyData.logo || "/placeholder.svg"}
+                alt={companyData.companyName}
+                className="w-10 h-10 rounded-lg object-contain"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                <Building2 size={20} className="text-gray-400" />
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="font-semibold text-gray-900 text-sm">{companyData.companyName || "My Company"}</div>
+            <div className="text-xs text-gray-500">{total} posts ready</div>
+          </div>
+        </div>
+        <nav className="flex-1 p-3 space-1">
+          {[
+            { id: "library", icon: FileText, label: "Content Library", badge: total },
+            { id: "calendar", icon: Calendar, label: "90-Day Calendar" },
+            { id: "tasks", icon: CheckSquare, label: "Daily Tasks", badge: `${done}/${tasks.length}` },
+            { id: "pillars", icon: Target, label: "Content Pillars" },
+            { id: "metrics", icon: BarChart3, label: "Metrics & KPIs" },
+          ].map((n) => (
+            <button
+              key={n.id}
+              onClick={() => setSection(n.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition ${
+                section === n.id
+                  ? "bg-transparent text-gray-900 font-medium border-l-2 border-gray-900 rounded-l-none"
+                  : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <n.icon size={18} />
+              <span>{n.label}</span>
+              {n.badge && <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{n.badge}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="p-3 border-t border-gray-200 space-1">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+          >
+            <Settings size={18} />
+            <span>Settings</span>
+          </button>
+          <button
+            onClick={onReset}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+          >
+            <LogOut size={18} />
+            <span>Reset</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="md:hidden bg-white border-b border-gray-200 p-4 sticky top-0 z-40">
+        <div className="flex items-center justify-between">
+          <button onClick={() => setShowMobileSidebar(true)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <Menu size={20} />
+          </button>
+          <div className="flex items-center gap-2">
+            {companyData.logo ? (
+              <img
+                src={companyData.logo || "/placeholder.svg"}
+                alt={companyData.companyName}
+                className="w-8 h-8 rounded object-contain"
+              />
+            ) : (
+              <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
+                <Building2 size={16} className="text-gray-400" />
+              </div>
+            )}
+            <span className="text-sm font-bold">{companyData.companyName || "My Company"}</span>
+          </div>
+          <button onClick={() => setShowUserMenu(!showUserMenu)} className="p-2 hover:bg-gray-100 rounded-lg relative">
+            <User size={20} />
+          </button>
+        </div>
+      </div>
+
+      {showMobileSidebar && (
+        <div className="md:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setShowMobileSidebar(false)}>
+          <div className="bg-white w-64 h-full flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {companyData.logo ? (
+                  <img
+                    src={companyData.logo || "/placeholder.svg"}
+                    alt={companyData.companyName}
+                    className="w-10 h-10 rounded-lg object-contain"
+                  />
+                ) : (
+                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <Building2 size={20} className="text-gray-400" />
+                  </div>
+                )}
+                <div>
+                  <h1 className="text-sm font-bold text-gray-900">{companyData.companyName || "My Company"}</h1>
+                  <p className="text-xs text-gray-500">Content Engine</p>
+                </div>
+              </div>
+              <button onClick={() => setShowMobileSidebar(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+
+            <nav className="flex-1 p-4 space-1">
+              {[
+                { id: "library", label: "Content Library", icon: FileText, badge: total },
+                { id: "calendar", label: "Calendar", icon: Calendar },
+                { id: "tasks", label: "Daily Tasks", icon: CheckSquare, badge: `${done}/${tasks.length}` },
+                { id: "pillars", label: "Content Pillars", icon: Target },
+                { id: "metrics", label: "Metrics", icon: TrendingUp },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setSection(item.id)
+                    setShowMobileSidebar(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left ${
+                    section === item.id
+                      ? "bg-gray-50 text-gray-900 border-l-4 border-gray-900 font-medium"
+                      : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  <item.icon size={18} />
+                  <span className="text-sm">{item.label}</span>
+                  {item.badge && (
+                    <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{item.badge}</span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            <div className="p-4 border-t border-gray-200 space-1">
+              <button
+                onClick={() => {
+                  setShowSettings(true)
+                  setShowMobileSidebar(false)
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
+              >
+                <Settings size={18} />
+                <span className="text-sm">Settings</span>
+              </button>
+              <button
+                onClick={() => {
+                  onReset()
+                  setShowMobileSidebar(false)
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
+              >
+                <LogOut size={18} />
+                <span className="text-sm">Reset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="hidden md:flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Home size={16} />
+              <ChevronRight size={14} />
+              <span className="text-gray-900 font-medium">
+                {section === "library"
+                  ? "Content Library"
+                  : section === "calendar"
+                    ? "90-Day Calendar"
+                    : section === "tasks"
+                      ? "Daily Tasks"
+                      : section === "pillars"
+                        ? "Content Pillars"
+                        : "Metrics & KPIs"}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <Building2 size={16} />
+              <span className="font-medium">{companyData.companyName}</span>
+              <span className="text-gray-300">•</span>
+              <span className="text-gray-500">{companyData.industry}</span>
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-2 hover:bg-gray-50 rounded-lg p-1.5"
+              >
+                {companyData.logo ? (
+                  <img
+                    src={companyData.logo || "/placeholder.svg"}
+                    alt="User"
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                    <User size={16} className="text-gray-600" />
+                  </div>
+                )}
+              </button>
+              {showUserMenu && (
+                <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-10">
+                  <button
+                    onClick={onReset}
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Reset Onboarding
+                  </button>
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Settings
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 md:p-8">
+          {section === "library" && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold text-gray-900">Content Library</h2>
+                  <p className="text-sm text-gray-600 mt-1">Browse and manage your generated content</p>
+                </div>
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="md:hidden flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium"
+                >
+                  <Filter size={16} />
+                  Filters
+                </button>
+              </div>
+
+              <div className={`space-y-4 ${showFilters ? "block" : "hidden md:block"}`}>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <input
+                        type="text"
+                        placeholder="Search content..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0">
+                  {PLATFORMS.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setPlatform(p.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
+                        platform === p.id ? "bg-gray-900 text-white" : "bg-white border border-gray-200 text-gray-700"
+                      }`}
+                    >
+                      <p.icon size={16} />
+                      {p.name} ({(generatedContent[p.id] || []).length})
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0">
+                  <button
+                    onClick={() => setPillar("all")}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                      pillar === "all" ? "bg-gray-900 text-white" : "bg-white border border-gray-200 text-gray-700"
+                    }`}
+                  >
+                    All Pillars
+                  </button>
+                  {PILLARS.map((p) => (
+                    <button
+                      key={p.name}
+                      onClick={() => setPillar(p.name)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                        pillar === p.name ? "bg-gray-900 text-white" : "bg-white border border-gray-200 text-gray-700"
+                      }`}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {filtered().map((post: any) => {
+                  const key = `${platform}-${post.id}`
+                  const status = postStatuses[key] || post.status || "ready"
+                  const isEditing = editingPost === key
+
+                  return (
+                    <div
+                      key={key}
+                      className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition"
+                    >
+                      <div
+                        className="flex items-center justify-between p-4 cursor-pointer"
+                        onClick={() => !isEditing && setExpanded(expanded === key ? null : key)}
+                      >
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm font-medium text-gray-500">
+                            {post.id}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-medium text-gray-900">{post.title}</h3>
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded-full ${
+                                  status === "ready" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                                }`}
+                              >
+                                {status === "ready" ? "Ready" : "Review"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                                {post.pillar}
+                              </span>
+                              {expanded !== key && (
+                                <span className="text-xs text-gray-400 truncate">
+                                  {post.content.substring(0, 140)}...
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {status === "review" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                togglePostStatus(platform, post.id)
+                              }}
+                              className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg"
+                            >
+                              <Square size={18} />
+                            </button>
+                          )}
+                          {status === "ready" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                togglePostStatus(platform, post.id)
+                              }}
+                              className="p-2 text-green-500 hover:bg-green-50 rounded-lg"
+                            >
+                              <CheckSquare size={18} />
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              copy(post.content, key)
+                            }}
+                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                          >
+                            {copied === key ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
+                          </button>
+                          <ChevronDown
+                            size={18}
+                            className={`text-gray-400 transition-transform ${expanded === key ? "rotate-180" : ""}`}
+                          />
+                        </div>
+                      </div>
+                      {expanded === key && (
+                        <div className="border-t border-gray-100 p-4 bg-gray-50">
+                          {isEditing ? (
+                            <textarea
+                              value={editContent}
+                              onChange={(e) => setEditContent(e.target.value)}
+                              className="w-full min-h-[200px] p-3 text-sm text-gray-700 font-sans leading-relaxed border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 mb-4"
+                            />
+                          ) : (
+                            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed mb-4">
+                              {post.content}
+                            </pre>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => copy(post.content, `${key}-full`)}
+                              className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
+                            >
+                              {copied === `${key}-full` ? (
+                                <>
+                                  <Check size={14} /> Copied!
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={14} /> Copy
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleRegeneratePost(platform, post.id)}
+                              className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-white"
+                            >
+                              <RefreshCw size={14} /> Regenerate
+                            </button>
+                            {isEditing ? (
+                              <button
+                                onClick={() => handleSaveEdit(platform, post.id)}
+                                className="flex items-center gap-2 px-4 py-2 border border-green-500 text-green-600 text-sm rounded-lg hover:bg-green-50"
+                              >
+                                <Check size={14} /> Save
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleEditPost(platform, post.id, post.content)}
+                                className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-white"
+                              >
+                                <Edit3 size={14} /> Edit
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {section === "calendar" && (
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">90-Day Calendar</h2>
+                  <p className="text-gray-500">Your strategic posting schedule</p>
+                </div>
+                <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 bg-white text-gray-600 text-sm rounded-lg hover:bg-gray-50">
+                  <Download size={14} /> Export
+                </button>
+              </div>
+              {[1, 2, 3].map((m) => (
+                <div key={m} className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                  <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <h3 className="font-semibold text-gray-900">
+                      Month {m}: {m === 1 ? "Foundation" : m === 2 ? "Growth" : "Scale"}
+                    </h3>
+                  </div>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">
+                        <th className="px-6 py-3 w-20">Week</th>
+                        <th className="px-6 py-3">Monday</th>
+                        <th className="px-6 py-3">Wednesday</th>
+                        <th className="px-6 py-3">Friday</th>
+                        <th className="px-6 py-3 w-32">Focus</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {calendar
+                        .filter((w) => w.month === m)
+                        .map((w) => (
+                          <tr key={w.week} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{w.week}</td>
+                            {w.posts.map((p, i) => (
+                              <td key={i} className="px-6 py-4">
+                                <div className="text-sm font-medium text-gray-900">{p.type}</div>
+                                <div className="text-xs text-gray-500">{p.pillar}</div>
+                              </td>
+                            ))}
+                            <td className="px-6 py-4">
+                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">{w.phase}</span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {section === "tasks" && (
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Daily Tasks</h2>
+                  <p className="text-gray-500">Your GTM execution checklist</p>
+                </div>
+                <span className="text-sm text-gray-500">
+                  {done}/{tasks.length} complete
+                </span>
+              </div>
+              {["Content", "Engagement", "Outreach", "Analytics"].map((cat) => {
+                const catTasks = tasks.filter((t) => t.cat === cat)
+                if (!catTasks.length) return null
+                return (
+                  <div key={cat} className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+                    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <h3 className="font-medium text-gray-900">{cat}</h3>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {catTasks.map((t) => (
+                        <div
+                          key={t.id}
+                          onClick={() => toggleDailyTask(t.id)}
+                          className={`flex items-center gap-4 p-4 cursor-pointer ${checked[t.id] ? "bg-green-50" : "hover:bg-gray-50"}`}
+                        >
+                          <div
+                            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${checked[t.id] ? "bg-green-500 border-green-500" : "border-gray-300"}`}
+                          >
+                            {checked[t.id] && <Check size={14} className="text-white" />}
+                          </div>
+                          <p
+                            className={`flex-1 text-sm ${checked[t.id] ? "text-gray-500 line-through" : "text-gray-900"}`}
+                          >
+                            {t.text}
+                          </p>
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded ${t.pri === "high" ? "bg-red-100 text-red-700" : t.pri === "medium" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}
+                          >
+                            {t.pri}
+                          </span>
+                          <span className="text-xs text-gray-400">{t.time}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {section === "pillars" && (
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Content Pillars</h2>
+              <p className="text-gray-500 mb-6">Your strategic content mix</p>
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+                <h3 className="font-medium text-gray-900 mb-4">Pillar Distribution</h3>
+                <div className="space-y-4">
+                  {PILLARS.map((p) => (
+                    <div key={p.id} className="flex items-center gap-4">
+                      <div className="w-32 text-sm font-medium text-gray-700">{p.name}</div>
+                      <div className="flex-1 h-8 bg-gray-100 rounded-lg overflow-hidden">
+                        <div className={`h-full ${p.color} flex items-center px-3`} style={{ width: `${p.pct * 4}%` }}>
+                          <span className="text-xs font-medium text-white">{p.pct}%</span>
+                        </div>
+                      </div>
+                      <div className="w-40 text-xs text-gray-500">{p.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h3 className="font-medium text-gray-900 mb-4">Recommended Hashtags</h3>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    `#${companyData.companyName?.replace(/\s+/g, "")}`,
+                    "#BuildingInPublic",
+                    `#${companyData.industry || "SaaS"}`,
+                    "#StartupLife",
+                    "#GrowthMarketing",
+                  ].map((tag) => (
+                    <span
+                      key={tag}
+                      onClick={() => copy(tag, tag)}
+                      className="px-3 py-1.5 bg-blue-100 text-blue-700 text-sm rounded-lg cursor-pointer hover:bg-blue-200"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {section === "metrics" && (
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Metrics & KPIs</h2>
+              <p className="text-gray-500 mb-6">Track your GTM progress</p>
+              <div className="grid grid-cols-4 gap-4 mb-6">
+                {[
+                  { label: "Total Posts", value: total, trend: "+12%", bg: "from-blue-50 to-white" },
+                  { label: "Engagement Rate", value: "4.8%", trend: "+0.3%", bg: "from-green-50 to-white" },
+                  { label: "Reach (90d)", value: "125K", trend: "+18%", bg: "from-purple-50 to-white" },
+                  { label: "Conversions", value: "43", trend: "+9", bg: "from-orange-50 to-white" },
+                ].map((m, i) => (
+                  <div key={i} className={`bg-gradient-to-br ${m.bg} border border-gray-200 rounded-xl p-4`}>
+                    <div className="text-xs text-gray-500 mb-1">{m.label}</div>
+                    <div className="flex items-end justify-between">
+                      <div className="text-2xl font-bold text-gray-900">{m.value}</div>
+                      <div className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                        <TrendingUp size={12} /> {m.trend}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="font-medium text-gray-900">90-Day Targets</h3>
+                </div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">
+                      <th className="px-6 py-3">Metric</th>
+                      <th className="px-6 py-3 text-center">Month 1</th>
+                      <th className="px-6 py-3 text-center">Month 2</th>
+                      <th className="px-6 py-3 text-center">Month 3</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {[
+                      { m: "Posts Published", v: ["12", "20", "30"] },
+                      { m: "Followers", v: ["+200", "+500", "+1,000"] },
+                      { m: "Engagement Rate", v: ["2%", "3%", "4%+"] },
+                      { m: "Leads", v: ["20", "50", "100"] },
+                      { m: "Demos", v: ["5", "15", "30"] },
+                    ].map((r) => (
+                      <tr key={r.m} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{r.m}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-center">{r.v[0]}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-center">{r.v[1]}</td>
+                        <td className="px-6 py-4 text-sm text-center font-medium text-green-600">{r.v[2]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <h3 className="font-medium text-amber-900 mb-2">Optimal Posting Times</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium text-amber-800">LinkedIn:</span>{" "}
+                    <span className="text-amber-700">Tue-Thu, 7-9 AM or 12-1 PM</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-amber-800">Twitter:</span>{" "}
+                    <span className="text-amber-700">6 AM, 12 PM, 3 PM, 8 PM</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Settings</h2>
+                <p className="text-sm text-gray-500 mt-1">Manage your data and preferences</p>
+              </div>
+              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X size={20} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div>
+                <h3 className="font-medium text-gray-900 mb-3">Company Information</h3>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Company:</span>
+                    <span className="text-gray-900 font-medium">{companyData.companyName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Industry:</span>
+                    <span className="text-gray-900">{companyData.industry || "Not set"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Target Platforms:</span>
+                    <span className="text-gray-900">{companyData.targetPlatforms?.length || 0} selected</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-gray-900 mb-3">Data Management</h3>
+                <div className="space-y-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <FileDown size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900 mb-1">Export All Data</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Download your complete GTM engine data as JSON (includes company info, content, and tasks)
+                        </p>
+                        <button
+                          onClick={exportAllData}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                        >
+                          <Download size={14} /> Export JSON
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <FileUp size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900 mb-1">Import Data</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Restore from a previous export or transfer data between devices
+                        </p>
+                        <input type="file" id="import-data" accept=".json" onChange={handleImport} className="hidden" />
+                        <label
+                          htmlFor="import-data"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition cursor-pointer"
+                        >
+                          <Upload size={14} /> Import JSON
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <FileText size={20} className="text-purple-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900 mb-1">Export Content Library (CSV)</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Download all your content posts in spreadsheet format for easy sharing
+                        </p>
+                        <button
+                          onClick={() => exportContentCSV(generatedContent, companyData.companyName)}
+                          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
+                        >
+                          <Download size={14} /> Export CSV
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-red-900 mb-3">Danger Zone</h3>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-gray-900 mb-1">Clear All Data</h4>
+                      <p className="text-sm text-gray-600 mb-3">
+                        Permanently delete all data from this device. This cannot be undone.
+                      </p>
+                      <button
+                        onClick={clearAllData}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition"
+                      >
+                        <X size={14} /> Clear All Data
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-gray-900 mb-3">Storage Stats</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-gray-900">{total}</div>
+                    <div className="text-xs text-gray-500">Total Posts</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-gray-900">{done}</div>
+                    <div className="text-xs text-gray-500">Tasks Done</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-gray-900">{companyData.targetPlatforms?.length || 0}</div>
+                    <div className="text-xs text-gray-500">Platforms</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBanner && view === "dashboard" && (
+        <div className="fixed bottom-0 left-0 right-0 bg-yellow-50 border-t border-amber-200 px-6 py-3 flex items-center justify-between z-50">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+            <p className="text-sm text-amber-900">
+              <strong>Preview Mode</strong> - Your content is ready to copy. Connect a database to save across sessions.
+            </p>
+          </div>
+          <button onClick={() => setShowBanner(false)} className="p-1 hover:bg-amber-100 rounded transition">
+            <X size={16} className="text-amber-700" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// MAIN APP
+// ============================================
+
+export default function GTMContentEngine() {
+  const [ready, setReady] = useState(() => {
+    return loadFromLocalStorage(STORAGE_KEYS.READY_STATE) || false
+  })
+  const [data, setData] = useState<any>(() => {
+    return loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
+  })
+  const [content, setContent] = useState<any>(() => {
+    return loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT)
+  })
+
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.READY_STATE, ready)
+  }, [ready])
+
+  const handleComplete = (formData: any, generatedContent: any) => {
+    setData(formData)
+    setContent(generatedContent)
+    setReady(true)
+    saveToLocalStorage(STORAGE_KEYS.FORM_DATA, formData)
+    saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT, generatedContent)
+    saveToLocalStorage(STORAGE_KEYS.READY_STATE, true)
+  }
+
+  const handleReset = () => {
+    localStorage.clear()
+    setReady(false)
+    setData(null)
+    setContent(null)
+    // Optionally, reset other states here if needed
+  }
+
+  if (!ready) return <OnboardingWizard onComplete={handleComplete} />
+  return <Dashboard companyData={data} onReset={handleReset} />
+}
