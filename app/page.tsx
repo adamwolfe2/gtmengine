@@ -39,6 +39,8 @@ import {
   Home,
   Menu,
   LogOut,
+  Hash,
+  Shuffle,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
@@ -2756,6 +2758,10 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set())
   const [critiquingPost, setCritiquingPost] = useState<string | null>(null)
   const [critiqueResult, setCritiqueResult] = useState<any | null>(null)
+  const [variantsPost, setVariantsPost] = useState<string | null>(null)
+  const [variantsResult, setVariantsResult] = useState<any | null>(null)
+  const [hashtagsPost, setHashtagsPost] = useState<string | null>(null)
+  const [hashtagsResult, setHashtagsResult] = useState<any | null>(null)
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -2949,6 +2955,89 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const closeCritique = () => {
     setCritiquingPost(null)
     setCritiqueResult(null)
+  }
+
+  // Generate A/B variants for a post
+  const handleGetVariants = async (platform: string, postId: number, content: string) => {
+    const key = `${platform}-${postId}`
+    setVariantsPost(key)
+    setVariantsResult(null)
+
+    try {
+      const response = await fetch("/api/variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          platform,
+          formData: companyData,
+          numVariants: 3,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast({ title: "Error", description: result.error || "Failed to generate variants", variant: "destructive" })
+        setVariantsPost(null)
+        return
+      }
+
+      if (result.success) {
+        setVariantsResult(result.variants)
+        toast({ title: "Variants Ready", description: `Generated ${result.variants.length} headline variants` })
+      }
+    } catch (error) {
+      console.error("Variants error:", error)
+      toast({ title: "Error", description: "Failed to generate variants", variant: "destructive" })
+      setVariantsPost(null)
+    }
+  }
+
+  const closeVariants = () => {
+    setVariantsPost(null)
+    setVariantsResult(null)
+  }
+
+  // Get hashtag suggestions for a post
+  const handleGetHashtags = async (platform: string, postId: number, content: string) => {
+    const key = `${platform}-${postId}`
+    setHashtagsPost(key)
+    setHashtagsResult(null)
+
+    try {
+      const response = await fetch("/api/hashtags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          platform,
+          formData: companyData,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast({ title: "Error", description: result.error || "Failed to get hashtags", variant: "destructive" })
+        setHashtagsPost(null)
+        return
+      }
+
+      if (result.success) {
+        setHashtagsResult(result)
+        toast({ title: "Hashtags Ready", description: `Found ${result.hashtags.length} hashtag suggestions` })
+      }
+    } catch (error) {
+      console.error("Hashtags error:", error)
+      toast({ title: "Error", description: "Failed to get hashtags", variant: "destructive" })
+      setHashtagsPost(null)
+    }
+  }
+
+  const closeHashtags = () => {
+    setHashtagsPost(null)
+    setHashtagsResult(null)
   }
 
   const togglePostStatus = (platform: string, postId: number) => {
@@ -3559,9 +3648,33 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                               {critiquingPost === key ? (
                                 <><RefreshCw size={14} className="animate-spin" /> Analyzing...</>
                               ) : (
-                                <><Sparkles size={14} /> Get Feedback</>
+                                <><Sparkles size={14} /> Feedback</>
                               )}
                             </button>
+                            <button
+                              onClick={() => handleGetVariants(platform, post.id, post.content)}
+                              disabled={variantsPost === key && !variantsResult}
+                              className="flex items-center gap-2 px-4 py-2 border border-blue-200 text-blue-600 text-sm rounded-lg hover:bg-blue-50 disabled:opacity-50"
+                            >
+                              {variantsPost === key && !variantsResult ? (
+                                <><RefreshCw size={14} className="animate-spin" /> Loading...</>
+                              ) : (
+                                <><Shuffle size={14} /> A/B</>
+                              )}
+                            </button>
+                            {(platform === "linkedin" || platform === "twitter" || platform === "threads") && (
+                              <button
+                                onClick={() => handleGetHashtags(platform, post.id, post.content)}
+                                disabled={hashtagsPost === key && !hashtagsResult}
+                                className="flex items-center gap-2 px-4 py-2 border border-cyan-200 text-cyan-600 text-sm rounded-lg hover:bg-cyan-50 disabled:opacity-50"
+                              >
+                                {hashtagsPost === key && !hashtagsResult ? (
+                                  <><RefreshCw size={14} className="animate-spin" /> Loading...</>
+                                ) : (
+                                  <><Hash size={14} /> Tags</>
+                                )}
+                              </button>
+                            )}
                             {isEditing ? (
                               <>
                                 <button
@@ -3669,6 +3782,92 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                                   </button>
                                 </div>
                               )}
+                            </div>
+                          )}
+
+                          {/* A/B Variants Results */}
+                          {variantsPost === key && variantsResult && (
+                            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-medium text-blue-900">A/B Headline Variants</h4>
+                                <button onClick={closeVariants} className="text-blue-600 hover:text-blue-800">
+                                  <X size={16} />
+                                </button>
+                              </div>
+                              <div className="space-y-3">
+                                {variantsResult.map((variant: any, i: number) => (
+                                  <div key={i} className="bg-white p-3 rounded-lg border border-blue-100">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <p className="text-sm text-gray-900 font-medium">{variant.headline}</p>
+                                        <div className="flex items-center gap-2 mt-2">
+                                          <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{variant.hook}</span>
+                                          <span className={`text-xs px-2 py-0.5 rounded ${
+                                            variant.predictedEngagement === "high" ? "bg-green-100 text-green-700" :
+                                            variant.predictedEngagement === "medium" ? "bg-yellow-100 text-yellow-700" :
+                                            "bg-gray-100 text-gray-700"
+                                          }`}>
+                                            {variant.predictedEngagement} engagement
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">{variant.angle}</p>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(variant.headline)
+                                          toast({ title: "Copied", description: "Headline variant copied" })
+                                        }}
+                                        className="text-blue-600 hover:text-blue-800 p-1"
+                                      >
+                                        <Copy size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Hashtag Suggestions Results */}
+                          {hashtagsPost === key && hashtagsResult && (
+                            <div className="mt-4 p-4 bg-cyan-50 border border-cyan-200 rounded-lg">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-medium text-cyan-900">Hashtag Suggestions</h4>
+                                <button onClick={closeHashtags} className="text-cyan-600 hover:text-cyan-800">
+                                  <X size={16} />
+                                </button>
+                              </div>
+                              <p className="text-sm text-cyan-800 mb-3">{hashtagsResult.strategy}</p>
+                              <p className="text-xs text-cyan-700 mb-2">Recommended: Use {hashtagsResult.recommendedCount} hashtags</p>
+                              <div className="flex flex-wrap gap-2">
+                                {hashtagsResult.hashtags?.map((tag: any, i: number) => (
+                                  <button
+                                    key={i}
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(tag.hashtag)
+                                      toast({ title: "Copied", description: `${tag.hashtag} copied` })
+                                    }}
+                                    className={`text-sm px-3 py-1 rounded-full border cursor-pointer transition hover:opacity-80 ${
+                                      tag.reach === "high" ? "bg-green-100 border-green-200 text-green-700" :
+                                      tag.reach === "medium" ? "bg-yellow-100 border-yellow-200 text-yellow-700" :
+                                      "bg-gray-100 border-gray-200 text-gray-700"
+                                    }`}
+                                    title={tag.reason}
+                                  >
+                                    {tag.hashtag}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const allHashtags = hashtagsResult.hashtags?.slice(0, hashtagsResult.recommendedCount).map((t: any) => t.hashtag).join(" ")
+                                  navigator.clipboard.writeText(allHashtags || "")
+                                  toast({ title: "Copied", description: "All recommended hashtags copied" })
+                                }}
+                                className="mt-3 text-sm text-cyan-600 hover:text-cyan-800 font-medium"
+                              >
+                                Copy all recommended →
+                              </button>
                             </div>
                           )}
                         </div>
