@@ -48,6 +48,7 @@ import {
   Layers,
   Moon,
   Sun,
+  History,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
@@ -3182,6 +3183,59 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT, generatedContent)
   }, [generatedContent])
 
+  // Content history tracking
+  const [contentHistory, setContentHistory] = useState<Record<string, Array<{ content: string; timestamp: string; version: number }>>>(() => {
+    const saved = loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT + "_history")
+    return saved || {}
+  })
+  const [showHistoryFor, setShowHistoryFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT + "_history", contentHistory)
+  }, [contentHistory])
+
+  const addToHistory = (postKey: string, content: string) => {
+    setContentHistory(prev => {
+      const existing = prev[postKey] || []
+      const nextVersion = existing.length > 0 ? Math.max(...existing.map(h => h.version)) + 1 : 1
+      return {
+        ...prev,
+        [postKey]: [
+          ...existing,
+          {
+            content,
+            timestamp: new Date().toISOString(),
+            version: nextVersion,
+          }
+        ].slice(-10) // Keep last 10 versions
+      }
+    })
+  }
+
+  const revertToVersion = (postKey: string, version: number) => {
+    const history = contentHistory[postKey]
+    if (!history) return
+
+    const versionToRevert = history.find(h => h.version === version)
+    if (!versionToRevert) return
+
+    const [platform, postId] = postKey.split("-")
+    setGeneratedContent((prev: any) => {
+      const updated = { ...prev }
+      if (updated[platform]) {
+        updated[platform] = updated[platform].map((post: any) =>
+          post.id === parseInt(postId)
+            ? { ...post, content: versionToRevert.content }
+            : post
+        )
+      }
+      return updated
+    })
+
+    toast({ title: "Reverted", description: `Reverted to version ${version}` })
+    setShowHistoryFor(null)
+  }
+
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
 
   // AI Calendar state
@@ -3464,6 +3518,12 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
       const updatedContent = { ...generatedContent }
       const postIndex = updatedContent[platform].findIndex((p: any) => p.id === postId)
       if (postIndex !== -1) {
+        // Save current version to history before overwriting
+        const postKey = `${platform}-${postId}`
+        const currentContent = updatedContent[platform][postIndex].content
+        addToHistory(postKey, currentContent)
+
+        // Update the post
         updatedContent[platform][postIndex].content = editContent
         setGeneratedContent(updatedContent) // Update state
         toast({ title: "Saved", description: "Post content updated successfully" })
@@ -4614,6 +4674,15 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                                   : "Schedule"}
                               </span>
                             </button>
+                            {contentHistory[key] && contentHistory[key].length > 0 && (
+                              <button
+                                onClick={() => setShowHistoryFor(key)}
+                                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-gray-200 text-gray-600 text-xs sm:text-sm rounded-lg hover:bg-gray-50"
+                              >
+                                <History size={14} />
+                                <span className="hidden sm:inline">{contentHistory[key].length}</span>
+                              </button>
+                            )}
                             {isEditing ? (
                               <>
                                 <button
@@ -5986,6 +6055,63 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   className="flex items-center gap-2 px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700"
                 >
                   <Clock size={14} /> Schedule
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Version History Dialog */}
+      <Dialog open={!!showHistoryFor} onOpenChange={(open) => !open && setShowHistoryFor(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History size={18} />
+              Version History
+            </DialogTitle>
+          </DialogHeader>
+          {showHistoryFor && contentHistory[showHistoryFor] && (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-gray-500">
+                {contentHistory[showHistoryFor].length} version{contentHistory[showHistoryFor].length !== 1 ? "s" : ""} saved
+              </p>
+              {contentHistory[showHistoryFor]
+                .sort((a, b) => b.version - a.version)
+                .map((version) => (
+                  <div key={version.version} className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-900">Version {version.version}</span>
+                      <span className="text-xs text-gray-500">
+                        {new Date(version.timestamp).toLocaleDateString()} {new Date(version.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 line-clamp-4 mb-3 whitespace-pre-wrap">{version.content}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(version.content)
+                          toast({ title: "Copied", description: `Version ${version.version} copied to clipboard` })
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+                      >
+                        <Copy size={12} /> Copy
+                      </button>
+                      <button
+                        onClick={() => revertToVersion(showHistoryFor, version.version)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                      >
+                        <RefreshCw size={12} /> Revert
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowHistoryFor(null)}
+                  className="px-4 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50"
+                >
+                  Close
                 </button>
               </div>
             </div>
