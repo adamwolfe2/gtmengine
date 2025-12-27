@@ -4352,8 +4352,116 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
             <div className="p-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Content Pillars</h2>
               <p className="text-gray-500 mb-6">Your strategic content mix</p>
+
+              {/* Actual Content Distribution Chart */}
+              {(() => {
+                // Count posts by pillar across all platforms
+                const pillarCounts: Record<string, number> = {}
+                let totalPosts = 0
+                Object.values(generatedContent).forEach((posts: any) => {
+                  if (Array.isArray(posts)) {
+                    posts.forEach((post: any) => {
+                      const pillarName = post.pillar || "Unknown"
+                      pillarCounts[pillarName] = (pillarCounts[pillarName] || 0) + 1
+                      totalPosts++
+                    })
+                  }
+                })
+
+                const pillarColors: Record<string, string> = {
+                  "Educational": "bg-blue-500",
+                  "Thought Leadership": "bg-purple-500",
+                  "Case Study": "bg-green-500",
+                  "Industry News": "bg-orange-500",
+                  "Behind the Scenes": "bg-pink-500",
+                  "Product Update": "bg-cyan-500",
+                  "Unknown": "bg-gray-400",
+                }
+
+                const entries = Object.entries(pillarCounts).sort((a, b) => b[1] - a[1])
+
+                if (totalPosts === 0) {
+                  return (
+                    <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+                      <h3 className="font-medium text-gray-900 mb-4">Your Content Distribution</h3>
+                      <div className="text-center py-8 text-gray-500">
+                        <BarChart3 size={48} className="mx-auto mb-4 text-gray-300" />
+                        <p>Generate content to see your pillar distribution</p>
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+                    <h3 className="font-medium text-gray-900 mb-4">Your Content Distribution</h3>
+                    <div className="flex gap-8">
+                      {/* Donut Chart */}
+                      <div className="relative w-40 h-40 flex-shrink-0">
+                        <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                          {(() => {
+                            let cumulativePercent = 0
+                            return entries.map(([pillar, count], i) => {
+                              const percent = (count / totalPosts) * 100
+                              const strokeDasharray = `${percent} ${100 - percent}`
+                              const strokeDashoffset = -cumulativePercent
+                              cumulativePercent += percent
+                              const colorClass = pillarColors[pillar] || "bg-gray-400"
+                              const colorHex = colorClass.includes("blue") ? "#3B82F6" :
+                                               colorClass.includes("purple") ? "#8B5CF6" :
+                                               colorClass.includes("green") ? "#22C55E" :
+                                               colorClass.includes("orange") ? "#F97316" :
+                                               colorClass.includes("pink") ? "#EC4899" :
+                                               colorClass.includes("cyan") ? "#06B6D4" : "#9CA3AF"
+                              return (
+                                <circle
+                                  key={pillar}
+                                  cx="50"
+                                  cy="50"
+                                  r="40"
+                                  fill="none"
+                                  stroke={colorHex}
+                                  strokeWidth="20"
+                                  strokeDasharray={strokeDasharray}
+                                  strokeDashoffset={strokeDashoffset}
+                                  pathLength="100"
+                                />
+                              )
+                            })
+                          })()}
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-gray-900">{totalPosts}</div>
+                            <div className="text-xs text-gray-500">posts</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex-1 space-y-3">
+                        {entries.map(([pillar, count]) => {
+                          const percent = Math.round((count / totalPosts) * 100)
+                          const colorClass = pillarColors[pillar] || "bg-gray-400"
+                          return (
+                            <div key={pillar} className="flex items-center gap-3">
+                              <div className={`w-3 h-3 rounded-full ${colorClass}`} />
+                              <div className="flex-1 flex items-center justify-between">
+                                <span className="text-sm text-gray-700">{pillar}</span>
+                                <span className="text-sm font-medium text-gray-900">{count} ({percent}%)</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Target Distribution */}
               <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-                <h3 className="font-medium text-gray-900 mb-4">Pillar Distribution</h3>
+                <h3 className="font-medium text-gray-900 mb-4">Target Distribution (Best Practice)</h3>
                 <div className="space-y-4">
                   {PILLARS.map((p) => (
                     <div key={p.id} className="flex items-center gap-4">
