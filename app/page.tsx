@@ -2904,6 +2904,54 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
 
+  // AI Calendar state
+  const [aiCalendar, setAiCalendar] = useState<any[] | null>(() => {
+    const saved = loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT + "_calendar")
+    return saved || null
+  })
+  const [isGeneratingCalendar, setIsGeneratingCalendar] = useState(false)
+
+  useEffect(() => {
+    if (aiCalendar) {
+      saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT + "_calendar", aiCalendar)
+    }
+  }, [aiCalendar])
+
+  const generateAICalendar = async () => {
+    setIsGeneratingCalendar(true)
+    try {
+      const platforms = Object.keys(generatedContent).filter(
+        (p) => (generatedContent[p] || []).length > 0
+      )
+      const postCount = Object.values(generatedContent).reduce(
+        (acc: number, posts: any) => acc + (posts?.length || 0),
+        0
+      )
+
+      const response = await fetch("/api/calendar-autofill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formData: companyData,
+          existingContent: { platforms, postCount },
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success && data.calendar) {
+        setAiCalendar(data.calendar)
+        toast({ title: "Calendar Generated", description: "AI has created your 90-day content calendar" })
+      } else {
+        toast({ title: "Error", description: data.error || "Failed to generate calendar", variant: "destructive" })
+      }
+    } catch (error) {
+      console.error("Calendar generation error:", error)
+      toast({ title: "Error", description: "Failed to generate calendar", variant: "destructive" })
+    } finally {
+      setIsGeneratingCalendar(false)
+    }
+  }
+
   // Keyboard shortcuts handler
   useEffect(() => {
     const handleKeyboard = (e: KeyboardEvent) => {
@@ -4454,48 +4502,133 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   <h2 className="text-2xl font-bold text-gray-900">90-Day Calendar</h2>
                   <p className="text-gray-500">Your strategic posting schedule</p>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 bg-white text-gray-600 text-sm rounded-lg hover:bg-gray-50">
-                  <Download size={14} /> Export
-                </button>
-              </div>
-              {[1, 2, 3].map((m) => (
-                <div key={m} className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-                  <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                    <h3 className="font-semibold text-gray-900">
-                      Month {m}: {m === 1 ? "Foundation" : m === 2 ? "Growth" : "Scale"}
-                    </h3>
-                  </div>
-                  <table className="w-full">
-                    <thead>
-                      <tr className="text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">
-                        <th className="px-6 py-3 w-20">Week</th>
-                        <th className="px-6 py-3">Monday</th>
-                        <th className="px-6 py-3">Wednesday</th>
-                        <th className="px-6 py-3">Friday</th>
-                        <th className="px-6 py-3 w-32">Focus</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {calendar
-                        .filter((w) => w.month === m)
-                        .map((w) => (
-                          <tr key={w.week} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{w.week}</td>
-                            {w.posts.map((p, i) => (
-                              <td key={i} className="px-6 py-4">
-                                <div className="text-sm font-medium text-gray-900">{p.type}</div>
-                                <div className="text-xs text-gray-500">{p.pillar}</div>
-                              </td>
-                            ))}
-                            <td className="px-6 py-4">
-                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">{w.phase}</span>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={generateAICalendar}
+                    disabled={isGeneratingCalendar}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+                  >
+                    {isGeneratingCalendar ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" /> Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} /> AI Auto-Fill
+                      </>
+                    )}
+                  </button>
+                  <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 bg-white text-gray-600 text-sm rounded-lg hover:bg-gray-50">
+                    <Download size={14} /> Export
+                  </button>
                 </div>
-              ))}
+              </div>
+
+              {/* Show AI-generated calendar if available */}
+              {aiCalendar && aiCalendar.length > 0 ? (
+                <>
+                  <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center gap-2">
+                    <Sparkles size={16} className="text-purple-600" />
+                    <span className="text-sm text-purple-800">AI-generated calendar with personalized topics for {companyData.companyName}</span>
+                    <button
+                      onClick={() => setAiCalendar(null)}
+                      className="ml-auto text-xs text-purple-600 hover:text-purple-800"
+                    >
+                      Reset to template
+                    </button>
+                  </div>
+                  {[1, 2, 3].map((m) => (
+                    <div key={m} className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                      <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        <h3 className="font-semibold text-gray-900">
+                          Month {m}: {m === 1 ? "Foundation" : m === 2 ? "Growth" : "Scale"}
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">
+                              <th className="px-4 py-3 w-16">Week</th>
+                              <th className="px-4 py-3">Monday</th>
+                              <th className="px-4 py-3">Wednesday</th>
+                              <th className="px-4 py-3">Friday</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {aiCalendar
+                              .filter((w: any) => w.month === m)
+                              .map((w: any) => (
+                                <tr key={w.week} className="hover:bg-gray-50">
+                                  <td className="px-4 py-4 text-sm font-medium text-gray-900">{w.week}</td>
+                                  {w.posts.map((p: any, i: number) => (
+                                    <td key={i} className="px-4 py-3">
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-1">
+                                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                            p.type === "Educational" ? "bg-blue-100 text-blue-700" :
+                                            p.type === "Story" ? "bg-green-100 text-green-700" :
+                                            p.type === "Engagement" ? "bg-orange-100 text-orange-700" :
+                                            p.type === "Promotional" ? "bg-purple-100 text-purple-700" :
+                                            "bg-gray-100 text-gray-700"
+                                          }`}>{p.type}</span>
+                                          {p.platform && (
+                                            <span className="text-xs text-gray-400 capitalize">{p.platform}</span>
+                                          )}
+                                        </div>
+                                        <div className="text-sm text-gray-900 font-medium line-clamp-2">{p.topic}</div>
+                                        <div className="text-xs text-gray-500">{p.pillar}</div>
+                                      </div>
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                /* Default template calendar */
+                [1, 2, 3].map((m) => (
+                  <div key={m} className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                    <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                      <h3 className="font-semibold text-gray-900">
+                        Month {m}: {m === 1 ? "Foundation" : m === 2 ? "Growth" : "Scale"}
+                      </h3>
+                    </div>
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-left text-xs font-medium text-gray-500 uppercase bg-gray-50">
+                          <th className="px-6 py-3 w-20">Week</th>
+                          <th className="px-6 py-3">Monday</th>
+                          <th className="px-6 py-3">Wednesday</th>
+                          <th className="px-6 py-3">Friday</th>
+                          <th className="px-6 py-3 w-32">Focus</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {calendar
+                          .filter((w) => w.month === m)
+                          .map((w) => (
+                            <tr key={w.week} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 text-sm font-medium text-gray-900">{w.week}</td>
+                              {w.posts.map((p, i) => (
+                                <td key={i} className="px-6 py-4">
+                                  <div className="text-sm font-medium text-gray-900">{p.type}</div>
+                                  <div className="text-xs text-gray-500">{p.pillar}</div>
+                                </td>
+                              ))}
+                              <td className="px-6 py-4">
+                                <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">{w.phase}</span>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
             </div>
           )}
 
