@@ -42,6 +42,7 @@ import {
   Hash,
   Shuffle,
   Eye,
+  Clock,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
@@ -68,6 +69,35 @@ const PLATFORM_LIMITS: Record<string, { optimal: number; max: number; label: str
   threads: { optimal: 400, max: 500, label: "Threads" },
   email: { optimal: 1500, max: 2500, label: "Email" },
   ads: { optimal: 90, max: 125, label: "Ad Copy" },
+}
+
+// Optimal posting times by platform (based on engagement data)
+const OPTIMAL_TIMES: Record<string, { times: string[]; days: string[]; reason: string }> = {
+  linkedin: {
+    times: ["7:30 AM", "12:00 PM", "5:00 PM"],
+    days: ["Tuesday", "Wednesday", "Thursday"],
+    reason: "Peak professional engagement during commute and lunch hours"
+  },
+  twitter: {
+    times: ["9:00 AM", "12:00 PM", "3:00 PM", "6:00 PM"],
+    days: ["Monday", "Tuesday", "Wednesday", "Thursday"],
+    reason: "High scroll times during work breaks and commute"
+  },
+  threads: {
+    times: ["11:00 AM", "2:00 PM", "8:00 PM"],
+    days: ["Tuesday", "Thursday", "Sunday"],
+    reason: "Casual browsing peaks during lunch and evening"
+  },
+  email: {
+    times: ["6:00 AM", "10:00 AM", "2:00 PM"],
+    days: ["Tuesday", "Wednesday", "Thursday"],
+    reason: "Pre-work inbox clearing and post-meeting checks"
+  },
+  ads: {
+    times: ["12:00 PM", "6:00 PM", "9:00 PM"],
+    days: ["Monday", "Friday", "Saturday"],
+    reason: "Peak purchasing intent times"
+  },
 }
 
 const saveToLocalStorage = (key: string, data: any) => {
@@ -2780,6 +2810,8 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [regenerateFeedback, setRegenerateFeedback] = useState("")
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [copyDropdown, setCopyDropdown] = useState<string | null>(null)
+  const [schedulingPost, setSchedulingPost] = useState<{ platform: string; postId: number; title: string } | null>(null)
+  const [scheduledPosts, setScheduledPosts] = useState<Record<string, { date: string; time: string }>>({})
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -3922,6 +3954,19 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                             >
                               <Eye size={14} /> Preview
                             </button>
+                            <button
+                              onClick={() => setSchedulingPost({ platform, postId: post.id, title: post.title })}
+                              className={`flex items-center gap-2 px-4 py-2 border text-sm rounded-lg ${
+                                scheduledPosts[`${platform}-${post.id}`]
+                                  ? "border-green-200 text-green-600 bg-green-50"
+                                  : "border-teal-200 text-teal-600 hover:bg-teal-50"
+                              }`}
+                            >
+                              <Clock size={14} />
+                              {scheduledPosts[`${platform}-${post.id}`]
+                                ? `${scheduledPosts[`${platform}-${post.id}`].date} ${scheduledPosts[`${platform}-${post.id}`].time}`
+                                : "Schedule"}
+                            </button>
                             {isEditing ? (
                               <>
                                 <button
@@ -4697,6 +4742,145 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
           </button>
         </div>
       )}
+
+      {/* Scheduling Dialog */}
+      <Dialog open={!!schedulingPost} onOpenChange={(open) => !open && setSchedulingPost(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock size={18} />
+              Schedule Post
+            </DialogTitle>
+          </DialogHeader>
+          {schedulingPost && (
+            <div className="mt-4 space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <h4 className="text-xs font-medium text-gray-500 uppercase mb-1">Post</h4>
+                <p className="text-sm text-gray-900 font-medium">{schedulingPost.title}</p>
+                <p className="text-xs text-gray-500">{PLATFORM_LIMITS[schedulingPost.platform]?.label || schedulingPost.platform}</p>
+              </div>
+
+              {/* Date and Time Inputs */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split("T")[0]}
+                    defaultValue={scheduledPosts[`${schedulingPost.platform}-${schedulingPost.postId}`]?.date || ""}
+                    onChange={(e) => {
+                      const key = `${schedulingPost.platform}-${schedulingPost.postId}`
+                      setScheduledPosts(prev => ({
+                        ...prev,
+                        [key]: { ...prev[key], date: e.target.value }
+                      }))
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                  <input
+                    type="time"
+                    defaultValue={scheduledPosts[`${schedulingPost.platform}-${schedulingPost.postId}`]?.time || ""}
+                    onChange={(e) => {
+                      const key = `${schedulingPost.platform}-${schedulingPost.postId}`
+                      setScheduledPosts(prev => ({
+                        ...prev,
+                        [key]: { ...prev[key], time: e.target.value }
+                      }))
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+
+              {/* Optimal Times Suggestions */}
+              {OPTIMAL_TIMES[schedulingPost.platform] && (
+                <div className="p-3 bg-teal-50 border border-teal-100 rounded-lg">
+                  <h4 className="text-sm font-medium text-teal-900 mb-2 flex items-center gap-2">
+                    <Sparkles size={14} /> Optimal Posting Times
+                  </h4>
+                  <p className="text-xs text-teal-700 mb-2">{OPTIMAL_TIMES[schedulingPost.platform].reason}</p>
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-xs text-teal-600">Best days: </span>
+                      <span className="text-xs font-medium text-teal-800">
+                        {OPTIMAL_TIMES[schedulingPost.platform].days.join(", ")}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {OPTIMAL_TIMES[schedulingPost.platform].times.map((time) => (
+                        <button
+                          key={time}
+                          onClick={() => {
+                            // Parse time and set it
+                            const matches = time.match(/\d+/g) || ["12", "00"]
+                            const hour = matches[0] || "12"
+                            const minute = matches[1] || "00"
+                            const isPM = time.includes("PM")
+                            let h = parseInt(hour)
+                            if (isPM && h !== 12) h += 12
+                            if (!isPM && h === 12) h = 0
+                            const timeValue = `${h.toString().padStart(2, "0")}:${minute.padStart(2, "0")}`
+                            const key = `${schedulingPost.platform}-${schedulingPost.postId}`
+                            setScheduledPosts(prev => ({
+                              ...prev,
+                              [key]: { ...prev[key], time: timeValue }
+                            }))
+                          }}
+                          className="text-xs px-2 py-1 bg-teal-100 text-teal-700 rounded-full hover:bg-teal-200 transition"
+                        >
+                          {time}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                {scheduledPosts[`${schedulingPost.platform}-${schedulingPost.postId}`] && (
+                  <button
+                    onClick={() => {
+                      const key = `${schedulingPost.platform}-${schedulingPost.postId}`
+                      setScheduledPosts(prev => {
+                        const newPosts = { ...prev }
+                        delete newPosts[key]
+                        return newPosts
+                      })
+                      toast({ title: "Unscheduled", description: "Post removed from schedule" })
+                    }}
+                    className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+                  >
+                    Remove Schedule
+                  </button>
+                )}
+                <button
+                  onClick={() => setSchedulingPost(null)}
+                  className="px-4 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const key = `${schedulingPost.platform}-${schedulingPost.postId}`
+                    if (scheduledPosts[key]?.date && scheduledPosts[key]?.time) {
+                      toast({ title: "Scheduled", description: `Post scheduled for ${scheduledPosts[key].date} at ${scheduledPosts[key].time}` })
+                      setSchedulingPost(null)
+                    } else {
+                      toast({ title: "Missing Info", description: "Please select both date and time", variant: "destructive" })
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                >
+                  <Clock size={14} /> Schedule
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Regenerate with Feedback Dialog */}
       <Dialog open={!!regeneratePost} onOpenChange={(open) => !open && setRegeneratePost(null)}>
