@@ -2838,6 +2838,84 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT, generatedContent)
   }, [generatedContent])
 
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+
+  // Keyboard shortcuts handler
+  useEffect(() => {
+    const handleKeyboard = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      // Cmd/Ctrl + key shortcuts
+      if (e.metaKey || e.ctrlKey) {
+        switch (e.key.toLowerCase()) {
+          case "/":
+            e.preventDefault()
+            setShowShortcutsHelp(prev => !prev)
+            break
+          case "k":
+            e.preventDefault()
+            // Focus search
+            const searchInput = document.querySelector('[placeholder*="Search"]') as HTMLInputElement
+            if (searchInput) searchInput.focus()
+            break
+          case "e":
+            e.preventDefault()
+            exportAllData()
+            toast({ title: "Exported", description: "All data exported to JSON file" })
+            break
+        }
+      }
+
+      // Single key shortcuts (no modifiers)
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        switch (e.key) {
+          case "?":
+            e.preventDefault()
+            setShowShortcutsHelp(prev => !prev)
+            break
+          case "Escape":
+            // Close any open dialogs/dropdowns
+            setPreviewPost(null)
+            setRegeneratePost(null)
+            setSchedulingPost(null)
+            setShowShortcutsHelp(false)
+            setCopyDropdown(null)
+            break
+          case "1":
+            setSection("library")
+            break
+          case "2":
+            setSection("calendar")
+            break
+          case "3":
+            setSection("tasks")
+            break
+          case "4":
+            setSection("pillars")
+            break
+          case "l":
+            setPlatform("linkedin")
+            break
+          case "t":
+            setPlatform("twitter")
+            break
+          case "h":
+            setPlatform("threads")
+            break
+          case "m":
+            setPlatform("email")
+            break
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyboard)
+    return () => window.removeEventListener("keydown", handleKeyboard)
+  }, [])
+
   useEffect(() => {
     if (generatedContent) {
       const statuses: Record<string, "ready" | "review"> = {}
@@ -5237,6 +5315,88 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Keyboard Shortcuts Help */}
+      <Dialog open={showShortcutsHelp} onOpenChange={setShowShortcutsHelp}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Keyboard Shortcuts</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Navigation</h4>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Content Library</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">1</kbd>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Calendar</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">2</kbd>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Daily Tasks</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">3</kbd>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Content Pillars</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">4</kbd>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Platforms</h4>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">LinkedIn</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">L</kbd>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Twitter/X</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">T</kbd>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Threads</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">H</kbd>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Email</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">M</kbd>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Actions</h4>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Search</span>
+                  <div className="flex items-center gap-1">
+                    <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">⌘</kbd>
+                    <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">K</kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Export Data</span>
+                  <div className="flex items-center gap-1">
+                    <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">⌘</kbd>
+                    <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">E</kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Close Dialog</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Esc</kbd>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Show/Hide Shortcuts</span>
+                  <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">?</kbd>
+                </div>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
