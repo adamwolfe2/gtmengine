@@ -46,6 +46,8 @@ import {
   Share2,
   ExternalLink,
   Layers,
+  Moon,
+  Sun,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
@@ -3230,6 +3232,26 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     }
   }
 
+  // Dark mode state
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("gtm-dark-mode")
+      return saved === "true"
+    }
+    return false
+  })
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("gtm-dark-mode", String(darkMode))
+      if (darkMode) {
+        document.documentElement.classList.add("dark")
+      } else {
+        document.documentElement.classList.remove("dark")
+      }
+    }
+  }, [darkMode])
+
   // Keyboard shortcuts handler
   useEffect(() => {
     const handleKeyboard = (e: KeyboardEvent) => {
@@ -3858,9 +3880,9 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const total = Object.values(generatedContent).reduce((a: number, p: any) => a + p.length, 0)
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-      <div className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col">
-        <div className="flex items-center gap-3 p-4 border-b border-gray-200">
+    <div className={`min-h-screen flex flex-col md:flex-row ${darkMode ? "dark bg-gray-900" : "bg-gray-50"}`}>
+      <div className={`hidden md:flex w-64 border-r flex-col ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
+        <div className={`flex items-center gap-3 p-4 border-b ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
           <div className="relative">
             {companyData.logo ? (
               <img
@@ -5546,6 +5568,29 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   <div className="flex justify-between">
                     <span className="text-gray-500">Target Platforms:</span>
                     <span className="text-gray-900">{companyData.targetPlatforms?.length || 0} selected</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-gray-900 mb-3">Preferences</h3>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {darkMode ? <Moon size={20} className="text-gray-600" /> : <Sun size={20} className="text-amber-500" />}
+                      <div>
+                        <h4 className="font-medium text-gray-900">Dark Mode</h4>
+                        <p className="text-sm text-gray-500">Switch between light and dark themes</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setDarkMode(!darkMode)}
+                      className={`relative w-12 h-6 rounded-full transition-colors ${darkMode ? "bg-blue-600" : "bg-gray-300"}`}
+                    >
+                      <div
+                        className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${darkMode ? "translate-x-6" : "translate-x-0.5"}`}
+                      />
+                    </button>
                   </div>
                 </div>
               </div>
