@@ -44,43 +44,100 @@ function extractJSON(text: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+
   try {
+    // Check API key first
     if (!process.env.ANTHROPIC_API_KEY) {
+      console.error("[Autofill] ANTHROPIC_API_KEY not configured")
       return NextResponse.json(
         { error: "ANTHROPIC_API_KEY not configured", code: "NO_API_KEY" },
         { status: 500 }
       )
     }
 
-    const body: AutofillRequest = await request.json()
-    const { companyName, website } = body
-
-    if (!companyName) {
+    // Parse request body
+    let body: AutofillRequest
+    try {
+      body = await request.json()
+    } catch (parseErr) {
+      console.error("[Autofill] Failed to parse request body:", parseErr)
       return NextResponse.json(
-        { error: "Company name is required" },
+        { error: "Invalid request body", code: "INVALID_REQUEST" },
         { status: 400 }
       )
     }
 
-    console.log(`Autofilling for: ${companyName} (${website || "no website"})`)
+    const { companyName, website } = body
+
+    if (!companyName) {
+      return NextResponse.json(
+        { error: "Company name is required", code: "MISSING_COMPANY" },
+        { status: 400 }
+      )
+    }
+
+    console.log(`[Autofill] Starting research for: ${companyName} (${website || "no website"})`)
 
     const prompt = buildAutofillPrompt(companyName, website)
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    })
+    // Call Anthropic API with timeout handling
+    let message
+    try {
+      console.log(`[Autofill] Calling Claude API...`)
+      message = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      })
+      console.log(`[Autofill] Claude API responded in ${Date.now() - startTime}ms`)
+    } catch (apiError: any) {
+      console.error("[Autofill] Claude API error:", {
+        message: apiError?.message,
+        status: apiError?.status,
+        type: apiError?.type,
+        code: apiError?.code,
+      })
+
+      // Handle specific API errors
+      if (apiError?.status === 401) {
+        return NextResponse.json(
+          { error: "Invalid API key", code: "INVALID_API_KEY", details: "The Anthropic API key is invalid or expired" },
+          { status: 500 }
+        )
+      }
+      if (apiError?.status === 429) {
+        return NextResponse.json(
+          { error: "Rate limited", code: "RATE_LIMITED", details: "Too many requests. Please try again later." },
+          { status: 429 }
+        )
+      }
+      if (apiError?.code === "ECONNREFUSED" || apiError?.code === "ENOTFOUND") {
+        return NextResponse.json(
+          { error: "Network error", code: "NETWORK_ERROR", details: "Could not connect to Anthropic API" },
+          { status: 503 }
+        )
+      }
+
+      return NextResponse.json(
+        { error: "AI service error", code: "API_ERROR", details: apiError?.message || String(apiError) },
+        { status: 500 }
+      )
+    }
 
     // Extract text content
     const textBlock = message.content.find((block) => block.type === "text")
     if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from Claude")
+      console.error("[Autofill] No text block in response:", message.content)
+      return NextResponse.json(
+        { error: "Empty response from AI", code: "EMPTY_RESPONSE" },
+        { status: 500 }
+      )
     }
 
     // Parse JSON from response
@@ -89,12 +146,13 @@ export async function POST(request: NextRequest) {
 
     try {
       parsed = JSON.parse(jsonStr)
+      console.log(`[Autofill] Successfully parsed response for ${companyName}`)
     } catch (parseError) {
-      console.error("JSON parse error:", parseError)
-      console.error("Raw response:", textBlock.text.slice(0, 500))
+      console.error("[Autofill] JSON parse error:", parseError)
+      console.error("[Autofill] Raw response (first 1000 chars):", textBlock.text.slice(0, 1000))
 
       return NextResponse.json(
-        { error: "Failed to parse AI response" },
+        { error: "Failed to parse AI response", code: "PARSE_ERROR", rawResponse: textBlock.text.slice(0, 500) },
         { status: 500 }
       )
     }
@@ -128,6 +186,8 @@ export async function POST(request: NextRequest) {
       dataQuality = "limited"
     }
 
+    console.log(`[Autofill] Completed for ${companyName} in ${Date.now() - startTime}ms - Quality: ${dataQuality} (${completeness.percentage}%)`)
+
     return NextResponse.json({
       success: true,
       data: validation.success ? validation.data : parsed,
@@ -138,10 +198,19 @@ export async function POST(request: NextRequest) {
         ? undefined
         : validation.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`),
     })
-  } catch (error) {
-    console.error("Autofill API error:", error)
+  } catch (error: any) {
+    console.error("[Autofill] Unexpected error:", {
+      message: error?.message,
+      stack: error?.stack?.split("\n").slice(0, 5).join("\n"),
+      name: error?.name,
+    })
+
     return NextResponse.json(
-      { error: "Failed to research company", details: String(error) },
+      {
+        error: "Failed to research company",
+        code: "UNKNOWN_ERROR",
+        details: error?.message || String(error)
+      },
       { status: 500 }
     )
   }
