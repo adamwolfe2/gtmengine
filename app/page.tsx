@@ -41,12 +41,14 @@ import {
   LogOut,
   Hash,
   Shuffle,
+  Eye,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
 import { generateContentWithLLM, generateContentWithStreaming, type GenerationProgress } from "@/lib/content/llm-generator"
 import { parseCompetitors, formatInsightsForPrompt, loadCompetitorInsights, saveCompetitorInsights, type CompetitorInsights } from "@/lib/competitors/analyzer"
 import { toast } from "@/hooks/use-toast"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { FormData } from "@/types/form"
 
 // ============================================
@@ -2773,6 +2775,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [hashtagsResult, setHashtagsResult] = useState<any | null>(null)
   const [scoringPost, setScoringPost] = useState<string | null>(null)
   const [scoringResult, setScoringResult] = useState<any | null>(null)
+  const [previewPost, setPreviewPost] = useState<{ platform: string; content: string; title: string } | null>(null)
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -3799,6 +3802,12 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                                 <><BarChart3 size={14} /> Score</>
                               )}
                             </button>
+                            <button
+                              onClick={() => setPreviewPost({ platform, content: post.content, title: post.title })}
+                              className="flex items-center gap-2 px-4 py-2 border border-indigo-200 text-indigo-600 text-sm rounded-lg hover:bg-indigo-50"
+                            >
+                              <Eye size={14} /> Preview
+                            </button>
                             {isEditing ? (
                               <>
                                 <button
@@ -4574,6 +4583,179 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
           </button>
         </div>
       )}
+
+      {/* Post Preview Modal */}
+      <Dialog open={!!previewPost} onOpenChange={(open) => !open && setPreviewPost(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye size={18} />
+              {previewPost?.platform && PLATFORM_LIMITS[previewPost.platform]?.label} Preview
+            </DialogTitle>
+          </DialogHeader>
+          {previewPost && (
+            <div className="mt-4">
+              {/* Platform-specific preview */}
+              {previewPost.platform === "linkedin" && (
+                <div className="border border-gray-200 rounded-lg bg-white">
+                  {/* LinkedIn header */}
+                  <div className="p-4 border-b border-gray-100">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                        {companyData.companyName?.charAt(0) || "C"}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-900">{companyData.companyName}</div>
+                        <div className="text-xs text-gray-500">{companyData.industry || "Industry"}</div>
+                        <div className="text-xs text-gray-400">Just now · 🌐</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* LinkedIn content */}
+                  <div className="p-4">
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-gray-900 leading-relaxed">
+                      {previewPost.content}
+                    </pre>
+                  </div>
+                  {/* LinkedIn engagement bar */}
+                  <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-4 text-gray-500 text-sm">
+                    <span>👍 Like</span>
+                    <span>💬 Comment</span>
+                    <span>🔄 Repost</span>
+                    <span>📤 Send</span>
+                  </div>
+                </div>
+              )}
+
+              {previewPost.platform === "twitter" && (
+                <div className="border border-gray-200 rounded-xl bg-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      {companyData.companyName?.charAt(0) || "C"}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-gray-900">{companyData.companyName}</span>
+                        <span className="text-gray-500 text-sm">@{(companyData.companyName || "company").toLowerCase().replace(/\s/g, "")}</span>
+                        <span className="text-gray-400">·</span>
+                        <span className="text-gray-500 text-sm">now</span>
+                      </div>
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-gray-900 mt-1 leading-relaxed">
+                        {previewPost.content}
+                      </pre>
+                      <div className="flex items-center gap-8 mt-3 text-gray-500">
+                        <span className="text-sm">💬 0</span>
+                        <span className="text-sm">🔄 0</span>
+                        <span className="text-sm">❤️ 0</span>
+                        <span className="text-sm">📊 0</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {previewPost.platform === "threads" && (
+                <div className="border border-gray-200 rounded-xl bg-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      {companyData.companyName?.charAt(0) || "C"}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1">
+                        <span className="font-semibold text-gray-900">{(companyData.companyName || "company").toLowerCase().replace(/\s/g, "")}</span>
+                        <span className="text-gray-400 text-sm">· now</span>
+                      </div>
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-gray-900 mt-2 leading-relaxed">
+                        {previewPost.content}
+                      </pre>
+                      <div className="flex items-center gap-6 mt-3 text-gray-400">
+                        <span>❤️</span>
+                        <span>💬</span>
+                        <span>🔄</span>
+                        <span>📤</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {previewPost.platform === "email" && (
+                <div className="border border-gray-200 rounded-lg bg-white">
+                  <div className="p-4 border-b border-gray-200 bg-gray-50">
+                    <div className="text-sm space-y-1">
+                      <div><span className="text-gray-500">From:</span> <span className="text-gray-900">{companyData.companyName} &lt;hello@{(companyData.website || "company.com").replace("https://", "").replace("http://", "")}&gt;</span></div>
+                      <div><span className="text-gray-500">To:</span> <span className="text-gray-900">[Recipient]</span></div>
+                      <div><span className="text-gray-500">Subject:</span> <span className="font-medium text-gray-900">{previewPost.title}</span></div>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-gray-900 leading-relaxed">
+                      {previewPost.content}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {previewPost.platform === "ads" && (
+                <div className="space-y-4">
+                  <div className="border border-gray-200 rounded-lg bg-white p-4">
+                    <div className="text-xs text-gray-500 mb-2">Ad Preview - Facebook/Instagram</div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                        {companyData.companyName?.charAt(0) || "C"}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-sm text-gray-900">{companyData.companyName}</div>
+                        <div className="text-xs text-gray-400">Sponsored</div>
+                      </div>
+                    </div>
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-gray-900 leading-relaxed">
+                      {previewPost.content}
+                    </pre>
+                    <div className="mt-4 p-3 bg-gray-100 rounded-lg border border-gray-200">
+                      <div className="text-xs text-gray-500 uppercase">Learn More</div>
+                      <div className="font-medium text-gray-900">{companyData.companyName}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Character count for preview */}
+              {(() => {
+                const limits = PLATFORM_LIMITS[previewPost.platform] || { optimal: 1000, max: 2000, label: previewPost.platform }
+                const charCount = previewPost.content.length
+                const isOverOptimal = charCount > limits.optimal
+                const isOverMax = charCount > limits.max
+                return (
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className={isOverMax ? "text-red-600 font-medium" : isOverOptimal ? "text-amber-600" : "text-green-600"}>
+                        {charCount.toLocaleString()} / {limits.max.toLocaleString()} characters
+                        {isOverMax && " (over limit!)"}
+                        {!isOverMax && isOverOptimal && " (above optimal)"}
+                        {!isOverOptimal && " (good length)"}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Copy button */}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(previewPost.content)
+                    toast({ title: "Copied", description: "Content copied to clipboard" })
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
+                >
+                  <Copy size={14} /> Copy Content
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
