@@ -54,6 +54,7 @@ const STORAGE_KEYS = {
 }
 
 const saveToLocalStorage = (key: string, data: any) => {
+  if (typeof window === "undefined") return
   try {
     localStorage.setItem(key, JSON.stringify(data))
   } catch (error) {
@@ -62,6 +63,7 @@ const saveToLocalStorage = (key: string, data: any) => {
 }
 
 const loadFromLocalStorage = (key: string) => {
+  if (typeof window === "undefined") return null
   try {
     const item = localStorage.getItem(key)
     return item ? JSON.parse(item) : null
@@ -3330,19 +3332,29 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
 // ============================================
 
 export default function GTMContentEngine() {
-  const [ready, setReady] = useState(() => {
-    return loadFromLocalStorage(STORAGE_KEYS.READY_STATE) || false
-  })
-  const [data, setData] = useState<any>(() => {
-    return loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
-  })
-  const [content, setContent] = useState<any>(() => {
-    return loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT)
-  })
+  const [isLoaded, setIsLoaded] = useState(false)
+  const [ready, setReady] = useState(false)
+  const [data, setData] = useState<any>(null)
+  const [content, setContent] = useState<any>(null)
+
+  // Load from localStorage on mount (client-side only)
+  useEffect(() => {
+    const savedReady = loadFromLocalStorage(STORAGE_KEYS.READY_STATE)
+    const savedData = loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
+    const savedContent = loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT)
+
+    if (savedReady) setReady(savedReady)
+    if (savedData) setData(savedData)
+    if (savedContent) setContent(savedContent)
+
+    setIsLoaded(true)
+  }, [])
 
   useEffect(() => {
-    saveToLocalStorage(STORAGE_KEYS.READY_STATE, ready)
-  }, [ready])
+    if (isLoaded) {
+      saveToLocalStorage(STORAGE_KEYS.READY_STATE, ready)
+    }
+  }, [ready, isLoaded])
 
   const handleComplete = (formData: any, generatedContent: any) => {
     setData(formData)
@@ -3354,11 +3366,23 @@ export default function GTMContentEngine() {
   }
 
   const handleReset = () => {
-    localStorage.clear()
+    if (typeof window !== "undefined") {
+      localStorage.clear()
+    }
     setReady(false)
     setData(null)
     setContent(null)
-    // Optionally, reset other states here if needed
+  }
+
+  // Show loading state while checking localStorage
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center animate-pulse">
+          <Sparkles size={20} className="text-white" />
+        </div>
+      </div>
+    )
   }
 
   if (!ready) return <OnboardingWizard onComplete={handleComplete} />
