@@ -59,6 +59,15 @@ const STORAGE_KEYS = {
   READY_STATE: "gtm_ready_state",
 }
 
+// Platform character limits (optimal/max)
+const PLATFORM_LIMITS: Record<string, { optimal: number; max: number; label: string }> = {
+  linkedin: { optimal: 1300, max: 3000, label: "LinkedIn" },
+  twitter: { optimal: 240, max: 280, label: "X/Twitter" },
+  threads: { optimal: 400, max: 500, label: "Threads" },
+  email: { optimal: 1500, max: 2500, label: "Email" },
+  ads: { optimal: 90, max: 125, label: "Ad Copy" },
+}
+
 const saveToLocalStorage = (key: string, data: any) => {
   if (typeof window === "undefined") return
   try {
@@ -3655,12 +3664,73 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                                 className="w-full min-h-[200px] p-3 text-sm text-gray-700 font-sans leading-relaxed border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 mb-2"
                                 autoFocus
                               />
+                              {/* Character count for editing */}
+                              {(() => {
+                                const limits = PLATFORM_LIMITS[platform] || { optimal: 1000, max: 2000, label: platform }
+                                const charCount = editContent.length
+                                const isOverOptimal = charCount > limits.optimal
+                                const isOverMax = charCount > limits.max
+                                const percentage = Math.min((charCount / limits.max) * 100, 100)
+                                return (
+                                  <div className="mb-2">
+                                    <div className="flex items-center justify-between text-xs mb-1">
+                                      <span className={isOverMax ? "text-red-600 font-medium" : isOverOptimal ? "text-amber-600" : "text-gray-500"}>
+                                        {charCount.toLocaleString()} / {limits.max.toLocaleString()} characters
+                                      </span>
+                                      <span className="text-gray-400">Optimal: {limits.optimal.toLocaleString()}</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                      <div
+                                        className={`h-1.5 rounded-full transition-all ${
+                                          isOverMax ? "bg-red-500" : isOverOptimal ? "bg-amber-500" : "bg-green-500"
+                                        }`}
+                                        style={{ width: `${percentage}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              })()}
                               <p className="text-xs text-gray-500 mb-4">Press Esc to cancel • ⌘+Enter to save</p>
                             </>
                           ) : (
-                            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed mb-4">
-                              {post.content}
-                            </pre>
+                            <>
+                              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed mb-2">
+                                {post.content}
+                              </pre>
+                              {/* Character count display */}
+                              {(() => {
+                                const limits = PLATFORM_LIMITS[platform] || { optimal: 1000, max: 2000, label: platform }
+                                const charCount = post.content.length
+                                const isOverOptimal = charCount > limits.optimal
+                                const isOverMax = charCount > limits.max
+                                const percentage = Math.min((charCount / limits.max) * 100, 100)
+                                return (
+                                  <div className="mb-4 px-3 py-2 bg-white rounded-lg border border-gray-100">
+                                    <div className="flex items-center justify-between text-xs mb-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className={isOverMax ? "text-red-600 font-medium" : isOverOptimal ? "text-amber-600" : "text-green-600"}>
+                                          {charCount.toLocaleString()} chars
+                                        </span>
+                                        {isOverMax && <span className="text-red-600 text-xs font-medium">⚠ Over limit!</span>}
+                                        {!isOverMax && isOverOptimal && <span className="text-amber-600 text-xs">Above optimal</span>}
+                                        {!isOverOptimal && <span className="text-green-600 text-xs">✓ Good length</span>}
+                                      </div>
+                                      <span className="text-gray-400">
+                                        {limits.label}: {limits.optimal.toLocaleString()}-{limits.max.toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                      <div
+                                        className={`h-1.5 rounded-full transition-all ${
+                                          isOverMax ? "bg-red-500" : isOverOptimal ? "bg-amber-500" : "bg-green-500"
+                                        }`}
+                                        style={{ width: `${percentage}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                            </>
                           )}
                           <div className="flex gap-2">
                             <button
