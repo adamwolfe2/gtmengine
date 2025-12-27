@@ -3339,9 +3339,66 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
   const [repurposeTarget, setRepurposeTarget] = useState<string>("")
   const [isRepurposing, setIsRepurposing] = useState(false)
 
+  // Content Collections
+  const [collections, setCollections] = useState<Record<string, { name: string; posts: Array<{ platform: string; postId: number; content: string; title: string }> }>>(() => {
+    const saved = loadFromLocalStorage("gtm_collections")
+    return saved || {}
+  })
+  const [showCollections, setShowCollections] = useState(false)
+  const [newCollectionName, setNewCollectionName] = useState("")
+  const [addingToCollection, setAddingToCollection] = useState<{ platform: string; postId: number; content: string; title: string } | null>(null)
+
   useEffect(() => {
     saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT + "_history", contentHistory)
   }, [contentHistory])
+
+  // Save collections to localStorage
+  useEffect(() => {
+    saveToLocalStorage("gtm_collections", collections)
+  }, [collections])
+
+  // Collection management functions
+  const createCollection = (name: string) => {
+    if (!name.trim()) return
+    const id = `col_${Date.now()}`
+    setCollections(prev => ({
+      ...prev,
+      [id]: { name: name.trim(), posts: [] }
+    }))
+    setNewCollectionName("")
+    toast({ title: "Collection Created", description: `"${name}" collection created` })
+  }
+
+  const addToCollection = (collectionId: string, post: { platform: string; postId: number; content: string; title: string }) => {
+    setCollections(prev => ({
+      ...prev,
+      [collectionId]: {
+        ...prev[collectionId],
+        posts: [...prev[collectionId].posts, post]
+      }
+    }))
+    toast({ title: "Added to Collection", description: `Post added to "${collections[collectionId]?.name}"` })
+    setAddingToCollection(null)
+  }
+
+  const removeFromCollection = (collectionId: string, postIndex: number) => {
+    setCollections(prev => ({
+      ...prev,
+      [collectionId]: {
+        ...prev[collectionId],
+        posts: prev[collectionId].posts.filter((_, i) => i !== postIndex)
+      }
+    }))
+  }
+
+  const deleteCollection = (collectionId: string) => {
+    setCollections(prev => {
+      const updated = { ...prev }
+      delete updated[collectionId]
+      return updated
+    })
+    toast({ title: "Collection Deleted" })
+  }
 
   const addToHistory = (postKey: string, content: string) => {
     setContentHistory(prev => {
@@ -4270,7 +4327,21 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
             </button>
           ))}
         </nav>
-        <div className="p-3 border-t border-gray-200 space-1">
+        <div className="p-3 border-t border-gray-200 space-y-1">
+          <button
+            onClick={() => setShowCollections(true)}
+            className="w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
+          >
+            <div className="flex items-center gap-3">
+              <Layers size={18} />
+              <span>Collections</span>
+            </div>
+            {Object.keys(collections).length > 0 && (
+              <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
+                {Object.keys(collections).length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setShowSettings(true)}
             className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
@@ -4941,6 +5012,13 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
                             >
                               <Shuffle size={14} />
                               <span className="hidden sm:inline">Repurpose</span>
+                            </button>
+                            <button
+                              onClick={() => setAddingToCollection({ platform, postId: post.id, content: post.content, title: post.title })}
+                              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-violet-200 text-violet-600 text-xs sm:text-sm rounded-lg hover:bg-violet-50"
+                            >
+                              <Layers size={14} />
+                              <span className="hidden sm:inline">Save</span>
                             </button>
                             {contentHistory[key] && contentHistory[key].length > 0 && (
                               <button
@@ -6140,6 +6218,152 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
           )}
         </div>
       </div>
+
+      {/* Add to Collection Modal */}
+      {addingToCollection && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">Save to Collection</h2>
+              <p className="text-sm text-gray-500 mt-1">Add this post to a collection for easy access</p>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Create new collection */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newCollectionName}
+                  onChange={(e) => setNewCollectionName(e.target.value)}
+                  placeholder="New collection name..."
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newCollectionName.trim()) {
+                      createCollection(newCollectionName)
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => createCollection(newCollectionName)}
+                  disabled={!newCollectionName.trim()}
+                  className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                >
+                  Create
+                </button>
+              </div>
+
+              {/* Existing collections */}
+              {Object.keys(collections).length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500 font-medium uppercase">Your Collections</p>
+                  {Object.entries(collections).map(([id, col]) => (
+                    <button
+                      key={id}
+                      onClick={() => addToCollection(id, addingToCollection)}
+                      className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-violet-50 hover:border-violet-200 transition"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Layers size={16} className="text-violet-500" />
+                        <span className="font-medium text-gray-900">{col.name}</span>
+                      </div>
+                      <span className="text-xs text-gray-500">{col.posts.length} posts</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-4">No collections yet. Create your first one above!</p>
+              )}
+
+              <button
+                onClick={() => setAddingToCollection(null)}
+                className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collections View Modal */}
+      {showCollections && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">My Collections</h2>
+                <p className="text-sm text-gray-500 mt-1">Organize and access your saved content</p>
+              </div>
+              <button onClick={() => setShowCollections(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X size={20} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="p-6">
+              {Object.keys(collections).length > 0 ? (
+                <div className="space-y-6">
+                  {Object.entries(collections).map(([id, col]) => (
+                    <div key={id} className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="flex items-center justify-between p-4 bg-gray-50">
+                        <div className="flex items-center gap-2">
+                          <Layers size={18} className="text-violet-500" />
+                          <span className="font-semibold text-gray-900">{col.name}</span>
+                          <span className="text-xs text-gray-500">({col.posts.length} posts)</span>
+                        </div>
+                        <button
+                          onClick={() => deleteCollection(id)}
+                          className="text-red-500 hover:text-red-700 text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {col.posts.map((post, i) => (
+                          <div key={i} className="p-4 hover:bg-gray-50">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs px-2 py-0.5 bg-gray-100 rounded capitalize">{post.platform}</span>
+                                  <span className="font-medium text-gray-900 text-sm">{post.title}</span>
+                                </div>
+                                <p className="text-sm text-gray-600 line-clamp-2">{post.content}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(post.content)
+                                    toast({ title: "Copied" })
+                                  }}
+                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                                >
+                                  <Copy size={14} />
+                                </button>
+                                <button
+                                  onClick={() => removeFromCollection(id, i)}
+                                  className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {col.posts.length === 0 && (
+                          <p className="p-4 text-sm text-gray-500 text-center">No posts in this collection yet</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Layers size={48} className="text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No collections yet</h3>
+                  <p className="text-gray-500">Save posts from your content library to organize them into collections</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Repurpose Modal */}
       {repurposingPost && (
