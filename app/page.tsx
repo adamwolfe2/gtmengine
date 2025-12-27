@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   Check,
   Copy,
@@ -2992,6 +2992,64 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     }
   }, [generatedContent])
 
+  // Calculate content analytics
+  const contentAnalytics = useMemo(() => {
+    const platformCounts: Record<string, number> = { linkedin: 0, twitter: 0, threads: 0, email: 0, ads: 0 }
+    const pillarCounts: Record<string, number> = {}
+    const lengthStats: Record<string, { total: number; count: number; min: number; max: number }> = {}
+    let totalPosts = 0
+    let totalChars = 0
+    let scheduledCount = 0
+
+    if (generatedContent) {
+      Object.entries(generatedContent).forEach(([platform, posts]: [string, any]) => {
+        platformCounts[platform] = posts.length
+        totalPosts += posts.length
+
+        if (!lengthStats[platform]) {
+          lengthStats[platform] = { total: 0, count: 0, min: Infinity, max: 0 }
+        }
+
+        posts.forEach((post: any) => {
+          const len = (post.content || "").length
+          lengthStats[platform].total += len
+          lengthStats[platform].count += 1
+          lengthStats[platform].min = Math.min(lengthStats[platform].min, len)
+          lengthStats[platform].max = Math.max(lengthStats[platform].max, len)
+          totalChars += len
+
+          // Track content pillars if available
+          if (post.pillar) {
+            pillarCounts[post.pillar] = (pillarCounts[post.pillar] || 0) + 1
+          }
+
+          // Track scheduled posts
+          const key = `${platform}-${post.id}`
+          if (scheduledPosts[key]) {
+            scheduledCount += 1
+          }
+        })
+      })
+    }
+
+    // Calculate averages
+    const platformAverages: Record<string, number> = {}
+    Object.entries(lengthStats).forEach(([platform, stats]) => {
+      platformAverages[platform] = stats.count > 0 ? Math.round(stats.total / stats.count) : 0
+    })
+
+    return {
+      platformCounts,
+      pillarCounts,
+      lengthStats,
+      platformAverages,
+      totalPosts,
+      totalChars,
+      scheduledCount,
+      avgCharsPerPost: totalPosts > 0 ? Math.round(totalChars / totalPosts) : 0,
+    }
+  }, [generatedContent, scheduledPosts])
+
   const handleRegeneratePost = (platform: string, postId: number) => {
     // Find the post to get its content
     const posts = generatedContent[platform] || []
@@ -4772,26 +4830,140 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
 
           {section === "metrics" && (
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Metrics & KPIs</h2>
-              <p className="text-gray-500 mb-6">Track your GTM progress</p>
-              <div className="grid grid-cols-4 gap-4 mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Content Analytics</h2>
+              <p className="text-gray-500 mb-6">Insights from your generated content</p>
+
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 {[
-                  { label: "Total Posts", value: total, trend: "+12%", bg: "from-blue-50 to-white" },
-                  { label: "Engagement Rate", value: "4.8%", trend: "+0.3%", bg: "from-green-50 to-white" },
-                  { label: "Reach (90d)", value: "125K", trend: "+18%", bg: "from-purple-50 to-white" },
-                  { label: "Conversions", value: "43", trend: "+9", bg: "from-orange-50 to-white" },
+                  { label: "Total Posts", value: contentAnalytics.totalPosts, icon: FileText, bg: "from-blue-50 to-white", color: "text-blue-600" },
+                  { label: "Total Characters", value: contentAnalytics.totalChars.toLocaleString(), icon: BarChart3, bg: "from-purple-50 to-white", color: "text-purple-600" },
+                  { label: "Avg. Length", value: `${contentAnalytics.avgCharsPerPost} chars`, icon: TrendingUp, bg: "from-green-50 to-white", color: "text-green-600" },
+                  { label: "Scheduled", value: contentAnalytics.scheduledCount, icon: Calendar, bg: "from-orange-50 to-white", color: "text-orange-600" },
                 ].map((m, i) => (
                   <div key={i} className={`bg-gradient-to-br ${m.bg} border border-gray-200 rounded-xl p-4`}>
-                    <div className="text-xs text-gray-500 mb-1">{m.label}</div>
-                    <div className="flex items-end justify-between">
-                      <div className="text-2xl font-bold text-gray-900">{m.value}</div>
-                      <div className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                        <TrendingUp size={12} /> {m.trend}
-                      </div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <m.icon size={16} className={m.color} />
+                      <span className="text-xs text-gray-500">{m.label}</span>
                     </div>
+                    <div className="text-2xl font-bold text-gray-900">{m.value}</div>
                   </div>
                 ))}
               </div>
+
+              {/* Platform Distribution */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="font-medium text-gray-900">Content by Platform</h3>
+                </div>
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {[
+                      { platform: "linkedin", label: "LinkedIn", color: "bg-blue-500", icon: Linkedin },
+                      { platform: "twitter", label: "X/Twitter", color: "bg-gray-800", icon: Twitter },
+                      { platform: "threads", label: "Threads", color: "bg-purple-500", icon: MessageCircle },
+                      { platform: "email", label: "Email", color: "bg-green-500", icon: Mail },
+                      { platform: "ads", label: "Ad Copy", color: "bg-orange-500", icon: Megaphone },
+                    ].map((p) => {
+                      const count = contentAnalytics.platformCounts[p.platform] || 0
+                      const maxCount = Math.max(...Object.values(contentAnalytics.platformCounts), 1)
+                      const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0
+                      const avgLen = contentAnalytics.platformAverages[p.platform] || 0
+                      return (
+                        <div key={p.platform} className="flex items-center gap-4">
+                          <div className="w-24 flex items-center gap-2">
+                            <p.icon size={16} className="text-gray-500" />
+                            <span className="text-sm font-medium text-gray-700">{p.label}</span>
+                          </div>
+                          <div className="flex-1">
+                            <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${p.color} rounded-full transition-all flex items-center justify-end pr-2`}
+                                style={{ width: `${Math.max(percentage, count > 0 ? 10 : 0)}%` }}
+                              >
+                                {count > 0 && <span className="text-xs font-medium text-white">{count}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="w-28 text-right">
+                            <span className="text-xs text-gray-500">Avg: {avgLen} chars</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Content Length Analysis */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h3 className="font-medium text-gray-900">Length Analysis</h3>
+                  </div>
+                  <div className="p-6">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-left text-xs font-medium text-gray-500 uppercase">
+                          <th className="pb-3">Platform</th>
+                          <th className="pb-3 text-right">Min</th>
+                          <th className="pb-3 text-right">Avg</th>
+                          <th className="pb-3 text-right">Max</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {Object.entries(contentAnalytics.lengthStats).map(([platform, stats]) => (
+                          <tr key={platform}>
+                            <td className="py-2 text-sm font-medium text-gray-900 capitalize">{platform}</td>
+                            <td className="py-2 text-sm text-gray-600 text-right">{stats.min === Infinity ? "-" : stats.min}</td>
+                            <td className="py-2 text-sm text-gray-600 text-right">{contentAnalytics.platformAverages[platform] || "-"}</td>
+                            <td className="py-2 text-sm text-gray-600 text-right">{stats.max === 0 ? "-" : stats.max}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Content Pillars Distribution */}
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h3 className="font-medium text-gray-900">Content Pillars</h3>
+                  </div>
+                  <div className="p-6">
+                    {Object.keys(contentAnalytics.pillarCounts).length === 0 ? (
+                      <div className="text-sm text-gray-500 text-center py-4">
+                        No pillar data available yet
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {Object.entries(contentAnalytics.pillarCounts)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([pillar, count]) => {
+                            const maxPillar = Math.max(...Object.values(contentAnalytics.pillarCounts), 1)
+                            const percentage = (count / maxPillar) * 100
+                            return (
+                              <div key={pillar}>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span className="text-gray-700">{pillar}</span>
+                                  <span className="text-gray-500">{count} posts</span>
+                                </div>
+                                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-indigo-500 rounded-full"
+                                    style={{ width: `${percentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 90-Day Targets */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
                 <div className="px-6 py-4 border-b border-gray-200">
                   <h3 className="font-medium text-gray-900">90-Day Targets</h3>
@@ -4823,9 +4995,11 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   </tbody>
                 </table>
               </div>
+
+              {/* Optimal Posting Times */}
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <h3 className="font-medium text-amber-900 mb-2">Optimal Posting Times</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="font-medium text-amber-800">LinkedIn:</span>{" "}
                     <span className="text-amber-700">Tue-Thu, 7-9 AM or 12-1 PM</span>
@@ -4833,6 +5007,14 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   <div>
                     <span className="font-medium text-amber-800">Twitter:</span>{" "}
                     <span className="text-amber-700">6 AM, 12 PM, 3 PM, 8 PM</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-amber-800">Threads:</span>{" "}
+                    <span className="text-amber-700">Mornings & Evenings, Weekdays</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-amber-800">Email:</span>{" "}
+                    <span className="text-amber-700">Tue-Thu, 10 AM or 2 PM</span>
                   </div>
                 </div>
               </div>
