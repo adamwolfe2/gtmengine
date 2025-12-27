@@ -2779,6 +2779,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [regeneratePost, setRegeneratePost] = useState<{ platform: string; postId: number; content: string; title: string } | null>(null)
   const [regenerateFeedback, setRegenerateFeedback] = useState("")
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [copyDropdown, setCopyDropdown] = useState<string | null>(null)
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -3154,6 +3155,42 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const copy = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
     setCopied(id)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  // Copy with format options
+  const copyWithFormat = (text: string, format: "plain" | "markdown" | "html", id: string) => {
+    let formattedText = text
+
+    if (format === "markdown") {
+      // Convert to markdown - preserve line breaks and add formatting
+      formattedText = text
+        .split("\n")
+        .map(line => {
+          // Convert lines starting with hashtags to headers
+          if (line.match(/^#+\s/)) return line
+          // Bold lines that are short (likely titles or emphasis)
+          if (line.length < 50 && line.length > 0 && !line.startsWith("-")) {
+            return `**${line}**`
+          }
+          return line
+        })
+        .join("\n\n")
+    } else if (format === "html") {
+      // Convert to HTML
+      formattedText = text
+        .split("\n\n")
+        .map(para => `<p>${para.replace(/\n/g, "<br>")}</p>`)
+        .join("\n")
+    }
+
+    navigator.clipboard.writeText(formattedText)
+    setCopied(id)
+    setCopyDropdown(null)
+    toast({
+      title: "Copied",
+      description: `Content copied as ${format === "plain" ? "plain text" : format === "markdown" ? "Markdown" : "HTML"}`
+    })
     setTimeout(() => setCopied(null), 2000)
   }
 
@@ -3783,21 +3820,50 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                               })()}
                             </>
                           )}
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => copy(post.content, `${key}-full`)}
-                              className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
-                            >
-                              {copied === `${key}-full` ? (
-                                <>
-                                  <Check size={14} /> Copied!
-                                </>
-                              ) : (
-                                <>
-                                  <Copy size={14} /> Copy
-                                </>
+                          <div className="flex gap-2 flex-wrap">
+                            {/* Copy button with format dropdown */}
+                            <div className="relative">
+                              <div className="flex">
+                                <button
+                                  onClick={() => copy(post.content, `${key}-full`)}
+                                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-l-lg hover:bg-gray-800"
+                                >
+                                  {copied === `${key}-full` ? (
+                                    <><Check size={14} /> Copied!</>
+                                  ) : (
+                                    <><Copy size={14} /> Copy</>
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => setCopyDropdown(copyDropdown === key ? null : key)}
+                                  className="px-2 py-2 bg-gray-900 text-white text-sm rounded-r-lg hover:bg-gray-800 border-l border-gray-700"
+                                >
+                                  <ChevronDown size={14} className={`transition ${copyDropdown === key ? "rotate-180" : ""}`} />
+                                </button>
+                              </div>
+                              {copyDropdown === key && (
+                                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[160px]">
+                                  <button
+                                    onClick={() => copyWithFormat(post.content, "plain", `${key}-plain`)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg"
+                                  >
+                                    <FileText size={14} /> Plain Text
+                                  </button>
+                                  <button
+                                    onClick={() => copyWithFormat(post.content, "markdown", `${key}-md`)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <FileText size={14} /> Markdown
+                                  </button>
+                                  <button
+                                    onClick={() => copyWithFormat(post.content, "html", `${key}-html`)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-b-lg"
+                                  >
+                                    <FileText size={14} /> HTML
+                                  </button>
+                                </div>
                               )}
-                            </button>
+                            </div>
                             <button
                               onClick={() => handleRegeneratePost(platform, post.id)}
                               className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-white"
