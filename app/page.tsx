@@ -49,6 +49,7 @@ import {
   Moon,
   Sun,
   History,
+  Zap,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
@@ -593,6 +594,114 @@ It's frustrating.
 [CTA] →`,
   },
 ]
+
+// ============================================
+// ENGAGEMENT PREDICTION MODEL
+// ============================================
+
+function predictEngagement(content: string, platform: string): {
+  score: number
+  level: "high" | "medium" | "low"
+  factors: string[]
+} {
+  let score = 50 // Base score
+  const factors: string[] = []
+
+  // Content length analysis
+  const length = content.length
+  const limits = PLATFORM_LIMITS[platform]
+  if (limits) {
+    if (length >= limits.optimal * 0.8 && length <= limits.max) {
+      score += 15
+      factors.push("Optimal length")
+    } else if (length < limits.optimal * 0.5) {
+      score -= 10
+      factors.push("Too short")
+    } else if (length > limits.max) {
+      score -= 10
+      factors.push("Too long")
+    }
+  }
+
+  // Hook detection (first line analysis)
+  const firstLine = content.split("\n")[0] || ""
+  if (
+    firstLine.includes("?") ||
+    firstLine.includes("!") ||
+    /^(Hot take|Unpopular opinion|I|The|Most|Stop|Here's)/i.test(firstLine.trim())
+  ) {
+    score += 10
+    factors.push("Strong hook")
+  }
+
+  // CTA detection
+  if (
+    /(\?|comment|share|like|follow|reply|DM|link in bio|check out)/i.test(content) ||
+    content.includes("👇") ||
+    content.includes("below")
+  ) {
+    score += 10
+    factors.push("Has CTA")
+  }
+
+  // Hashtag analysis (platform specific)
+  const hashtagCount = (content.match(/#\w+/g) || []).length
+  if (platform === "linkedin") {
+    if (hashtagCount >= 3 && hashtagCount <= 5) {
+      score += 8
+      factors.push("Good hashtag count")
+    } else if (hashtagCount > 7) {
+      score -= 5
+      factors.push("Too many hashtags")
+    }
+  } else if (platform === "twitter") {
+    if (hashtagCount <= 2) {
+      score += 5
+      factors.push("Appropriate hashtags")
+    } else {
+      score -= 5
+      factors.push("Too many hashtags for X")
+    }
+  } else if (platform === "threads" && hashtagCount === 0) {
+    score += 5
+    factors.push("No hashtags (good for Threads)")
+  }
+
+  // Line breaks / readability
+  const lineBreaks = (content.match(/\n\n/g) || []).length
+  if (lineBreaks >= 2) {
+    score += 8
+    factors.push("Good formatting")
+  }
+
+  // Emoji usage (mild boost)
+  const emojiCount = (content.match(/[\u{1F300}-\u{1F9FF}]/gu) || []).length
+  if (emojiCount >= 1 && emojiCount <= 5) {
+    score += 5
+    factors.push("Engaging emojis")
+  }
+
+  // List or numbered points
+  if (/^[\d•\-→].+/m.test(content)) {
+    score += 7
+    factors.push("Structured content")
+  }
+
+  // Cap score at 100
+  score = Math.min(100, Math.max(0, score))
+
+  // Determine level
+  let level: "high" | "medium" | "low"
+  if (score >= 75) {
+    level = "high"
+  } else if (score >= 50) {
+    level = "medium"
+  } else {
+    level = "low"
+  }
+
+  return { score, level, factors }
+}
 
 // ============================================
 // CONTENT GENERATION ENGINE
@@ -4387,6 +4496,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   const status = postStatuses[key] || post.status || "ready"
                   const isEditing = editingPost === key
                   const isSelected = selectedPosts.has(key)
+                  const prediction = predictEngagement(post.content, platform)
 
                   return (
                     <div
@@ -4420,6 +4530,19 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                                 }`}
                               >
                                 {status === "ready" ? "Ready" : "Review"}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded-full flex items-center gap-1 ${
+                                  prediction.level === "high"
+                                    ? "bg-blue-100 text-blue-700"
+                                    : prediction.level === "medium"
+                                      ? "bg-gray-100 text-gray-600"
+                                      : "bg-red-100 text-red-600"
+                                }`}
+                                title={prediction.factors.join(", ")}
+                              >
+                                <Zap size={10} />
+                                {prediction.score}%
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -4555,6 +4678,45 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                                   </div>
                                 )
                               })()}
+                              {/* Engagement Prediction Panel */}
+                              <div className="mb-4 px-3 py-2 bg-white rounded-lg border border-gray-100">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <Zap size={14} className={prediction.level === "high" ? "text-blue-500" : prediction.level === "medium" ? "text-gray-500" : "text-red-500"} />
+                                    <span className="text-xs font-medium text-gray-700">Engagement Prediction</span>
+                                  </div>
+                                  <span className={`text-sm font-bold ${
+                                    prediction.level === "high" ? "text-blue-600" : prediction.level === "medium" ? "text-gray-600" : "text-red-600"
+                                  }`}>
+                                    {prediction.score}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                                  <div
+                                    className={`h-2 rounded-full transition-all ${
+                                      prediction.level === "high" ? "bg-blue-500" : prediction.level === "medium" ? "bg-gray-400" : "bg-red-400"
+                                    }`}
+                                    style={{ width: `${prediction.score}%` }}
+                                  />
+                                </div>
+                                {prediction.factors.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {prediction.factors.slice(0, 4).map((factor, i) => (
+                                      <span
+                                        key={i}
+                                        className={`text-xs px-2 py-0.5 rounded-full ${
+                                          factor.startsWith("+") ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
+                                        }`}
+                                      >
+                                        {factor}
+                                      </span>
+                                    ))}
+                                    {prediction.factors.length > 4 && (
+                                      <span className="text-xs text-gray-400">+{prediction.factors.length - 4} more</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </>
                           )}
                           <div className="flex gap-1.5 sm:gap-2 flex-wrap">
