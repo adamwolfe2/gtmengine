@@ -2762,6 +2762,8 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [variantsResult, setVariantsResult] = useState<any | null>(null)
   const [hashtagsPost, setHashtagsPost] = useState<string | null>(null)
   const [hashtagsResult, setHashtagsResult] = useState<any | null>(null)
+  const [scoringPost, setScoringPost] = useState<string | null>(null)
+  const [scoringResult, setScoringResult] = useState<any | null>(null)
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -3038,6 +3040,47 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const closeHashtags = () => {
     setHashtagsPost(null)
     setHashtagsResult(null)
+  }
+
+  // Get content score for a post
+  const handleGetScore = async (platform: string, postId: number, content: string) => {
+    const key = `${platform}-${postId}`
+    setScoringPost(key)
+    setScoringResult(null)
+
+    try {
+      const response = await fetch("/api/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          platform,
+          formData: companyData,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast({ title: "Error", description: result.error || "Failed to score content", variant: "destructive" })
+        setScoringPost(null)
+        return
+      }
+
+      if (result.success) {
+        setScoringResult(result.score)
+        toast({ title: "Score Ready", description: `Overall score: ${result.score.overallScore}/10` })
+      }
+    } catch (error) {
+      console.error("Scoring error:", error)
+      toast({ title: "Error", description: "Failed to score content", variant: "destructive" })
+      setScoringPost(null)
+    }
+  }
+
+  const closeScore = () => {
+    setScoringPost(null)
+    setScoringResult(null)
   }
 
   const togglePostStatus = (platform: string, postId: number) => {
@@ -3675,6 +3718,17 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                                 )}
                               </button>
                             )}
+                            <button
+                              onClick={() => handleGetScore(platform, post.id, post.content)}
+                              disabled={scoringPost === key && !scoringResult}
+                              className="flex items-center gap-2 px-4 py-2 border border-amber-200 text-amber-600 text-sm rounded-lg hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              {scoringPost === key && !scoringResult ? (
+                                <><RefreshCw size={14} className="animate-spin" /> Scoring...</>
+                              ) : (
+                                <><BarChart3 size={14} /> Score</>
+                              )}
+                            </button>
                             {isEditing ? (
                               <>
                                 <button
@@ -3868,6 +3922,80 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                               >
                                 Copy all recommended →
                               </button>
+                            </div>
+                          )}
+
+                          {/* Scoring Results */}
+                          {scoringPost === key && scoringResult && (
+                            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-medium text-amber-900">Content Score Analysis</h4>
+                                <button onClick={closeScore} className="text-amber-600 hover:text-amber-800">
+                                  <X size={16} />
+                                </button>
+                              </div>
+
+                              {/* Overall Score */}
+                              <div className="flex items-center gap-4 mb-4 p-3 bg-white rounded-lg">
+                                <div className="text-3xl font-bold text-amber-600">
+                                  {scoringResult.overallScore}/10
+                                </div>
+                                <div className="flex-1">
+                                  <div className={`text-sm font-medium ${
+                                    scoringResult.predictedPerformance === "viral" ? "text-green-600" :
+                                    scoringResult.predictedPerformance === "high" ? "text-blue-600" :
+                                    scoringResult.predictedPerformance === "average" ? "text-amber-600" :
+                                    "text-red-600"
+                                  }`}>
+                                    {scoringResult.predictedPerformance?.toUpperCase()} predicted performance
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    Platform optimization: {scoringResult.platformOptimization}%
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Breakdown Grid */}
+                              <div className="grid grid-cols-3 gap-2 mb-4">
+                                {Object.entries(scoringResult.breakdown || {}).map(([dimension, data]: [string, any]) => (
+                                  <div key={dimension} className="p-2 bg-white rounded-lg">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-xs text-gray-600 capitalize">{dimension}</span>
+                                      <span className={`text-sm font-bold ${
+                                        data.score >= 8 ? "text-green-600" :
+                                        data.score >= 6 ? "text-amber-600" :
+                                        "text-red-600"
+                                      }`}>{data.score}/10</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                      <div
+                                        className={`h-1.5 rounded-full ${
+                                          data.score >= 8 ? "bg-green-500" :
+                                          data.score >= 6 ? "bg-amber-500" :
+                                          "bg-red-500"
+                                        }`}
+                                        style={{ width: `${data.score * 10}%` }}
+                                      />
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{data.feedback}</p>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Quick Wins */}
+                              {scoringResult.quickWins?.length > 0 && (
+                                <div className="p-3 bg-white rounded-lg">
+                                  <h5 className="text-sm font-medium text-amber-900 mb-2">Quick Wins</h5>
+                                  <ul className="space-y-1">
+                                    {scoringResult.quickWins.map((win: string, i: number) => (
+                                      <li key={i} className="text-xs text-gray-700 flex items-start gap-2">
+                                        <span className="text-amber-500 mt-0.5">→</span>
+                                        {win}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
