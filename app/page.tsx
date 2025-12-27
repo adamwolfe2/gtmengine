@@ -42,6 +42,8 @@ import {
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
+import { generateContentWithLLM, type GenerationProgress } from "@/lib/content/llm-generator"
+import { parseCompetitors, formatInsightsForPrompt, loadCompetitorInsights, saveCompetitorInsights, type CompetitorInsights } from "@/lib/competitors/analyzer"
 
 // ============================================
 // LOCAL STORAGE UTILITIES
@@ -1538,13 +1540,16 @@ function OnboardingWizard({ onComplete }: { onComplete: (data: any, content: any
   const [step, setStep] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [progressMessage, setProgressMessage] = useState("Preparing...")
+  const [generationMode, setGenerationMode] = useState<"template" | "llm">("llm") // Default to LLM
   const [aiModalStep, setAiModalStep] = useState<1 | 2>(1)
   const [aiPromptCopied, setAiPromptCopied] = useState(false)
   const [aiResponse, setAiResponse] = useState("")
   const [showAIModal, setShowAIModal] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
-  const [showSettings, setShowSettings] = useState(false) // Declared setShowSettings
-  const [showUserMenu, setShowUserMenu] = useState(false) // Declared showUserMenu
+  const [showSettings, setShowSettings] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const [generationError, setGenerationError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState(() => {
     const saved = loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
@@ -1712,16 +1717,96 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
 
   const handleComplete = async () => {
     setIsGenerating(true)
-    const interval = setInterval(() => {
-      setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 15))
-    }, 400)
+    setProgress(0)
+    setProgressMessage("Preparing your content engine...")
+    setGenerationError(null)
 
-    await new Promise((r) => setTimeout(r, 3000))
-    const content = generateContent(formData)
+    if (generationMode === "llm") {
+      // LLM-powered generation
+      try {
+        // First, fetch competitor insights if competitors are provided
+        let competitorInsights = ""
+        if (formData.competitors) {
+          setProgressMessage("Analyzing your competitors...")
+          setProgress(10)
 
-    clearInterval(interval)
-    setProgress(100)
-    setTimeout(() => onComplete(formData, content), 500)
+          try {
+            const competitors = parseCompetitors(formData)
+            const competitorResponse = await fetch("/api/competitors", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                companyName: formData.companyName,
+                industry: formData.industry,
+                competitors: competitors.map(c => c.name),
+                website: formData.website,
+              }),
+            })
+
+            if (competitorResponse.ok) {
+              const { insights } = await competitorResponse.json()
+              saveCompetitorInsights(insights)
+              competitorInsights = formatInsightsForPrompt(insights)
+            }
+          } catch (e) {
+            console.log("Competitor analysis skipped:", e)
+          }
+        }
+
+        setProgress(25)
+        setProgressMessage("AI is generating personalized content...")
+
+        // Generate content with LLM
+        const result = await generateContentWithLLM(
+          formData,
+          competitorInsights,
+          (progressUpdate: GenerationProgress) => {
+            setProgressMessage(progressUpdate.message)
+            setProgress(25 + (progressUpdate.progress * 0.7))
+          }
+        )
+
+        if (result.success && result.content) {
+          setProgress(100)
+          setProgressMessage("Content generated successfully!")
+          setTimeout(() => onComplete(formData, result.content), 500)
+        } else {
+          // Fallback to template generation
+          console.log("LLM generation failed, falling back to templates:", result.error)
+          setProgressMessage("Falling back to template generation...")
+          setProgress(80)
+
+          await new Promise((r) => setTimeout(r, 1000))
+          const content = generateContent(formData)
+
+          setProgress(100)
+          setProgressMessage("Content ready!")
+          setTimeout(() => onComplete(formData, content), 500)
+        }
+      } catch (error) {
+        console.error("Generation error:", error)
+        // Fallback to template generation
+        setProgressMessage("Using template generation...")
+        const content = generateContent(formData)
+        setProgress(100)
+        setTimeout(() => onComplete(formData, content), 500)
+      }
+    } else {
+      // Template-based generation (original)
+      const interval = setInterval(() => {
+        setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 15))
+      }, 400)
+
+      setProgressMessage("Generating content templates...")
+      await new Promise((r) => setTimeout(r, 2000))
+
+      const content = generateContent(formData)
+
+      clearInterval(interval)
+      setProgress(100)
+      setProgressMessage("Content ready!")
+      setTimeout(() => onComplete(formData, content), 500)
+    }
   }
 
   const canProceed = () => {
@@ -1764,24 +1849,42 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-md">
-          <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <img src="/images/campusgtm-20logo.png" alt="CampusGTM" className="w-12 h-12 object-contain" />
+          <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-6 animate-pulse">
+            <Sparkles size={28} className="text-white" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Generating Your Content Engine</h2>
-          <p className="text-gray-500 mb-6">Creating personalized content based on your business...</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {generationMode === "llm" ? "AI is Creating Your Content" : "Generating Your Content Engine"}
+          </h2>
+          <p className="text-gray-500 mb-6">{progressMessage}</p>
           <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
             <div
-              className="bg-gray-900 h-2 rounded-full transition-all duration-300"
+              className="bg-gray-900 h-2 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="space-y-2 text-sm text-gray-500">
-            {progress > 10 && <p>✓ Analyzing your ICP and pain points...</p>}
-            {progress > 30 && <p>✓ Crafting positioning and messaging...</p>}
-            {progress > 50 && <p>✓ Generating LinkedIn content...</p>}
-            {progress > 70 && <p>✓ Creating Twitter threads...</p>}
-            {progress > 90 && <p>✓ Finalizing your content library...</p>}
-          </div>
+          {generationMode === "llm" ? (
+            <div className="space-y-2 text-sm text-gray-500">
+              {progress > 5 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Analyzing company profile</p>}
+              {progress > 15 && formData.competitors && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Researching competitors</p>}
+              {progress > 30 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Crafting personalized messaging</p>}
+              {progress > 50 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Generating platform-specific content</p>}
+              {progress > 75 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Validating content quality</p>}
+              {progress > 95 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Finalizing your content library</p>}
+            </div>
+          ) : (
+            <div className="space-y-2 text-sm text-gray-500">
+              {progress > 10 && <p>✓ Analyzing your ICP and pain points...</p>}
+              {progress > 30 && <p>✓ Crafting positioning and messaging...</p>}
+              {progress > 50 && <p>✓ Generating LinkedIn content...</p>}
+              {progress > 70 && <p>✓ Creating Twitter threads...</p>}
+              {progress > 90 && <p>✓ Finalizing your content library...</p>}
+            </div>
+          )}
+          {generationError && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {generationError}
+            </div>
+          )}
         </div>
       </div>
     )
@@ -2190,6 +2293,56 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
                     <option value="inspiring">Inspiring</option>
                   </select>
                 </div>
+                {/* Generation Mode Toggle */}
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Content Generation Method
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setGenerationMode("llm")}
+                      className={`p-4 rounded-lg border-2 text-left transition ${
+                        generationMode === "llm"
+                          ? "border-blue-600 bg-blue-50"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Sparkles size={18} className={generationMode === "llm" ? "text-blue-600" : "text-gray-400"} />
+                        <span className={`font-semibold ${generationMode === "llm" ? "text-blue-900" : "text-gray-700"}`}>
+                          AI-Powered
+                        </span>
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Recommended</span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Claude generates unique, personalized content based on your company profile
+                        {formData.competitors && " and competitor analysis"}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGenerationMode("template")}
+                      className={`p-4 rounded-lg border-2 text-left transition ${
+                        generationMode === "template"
+                          ? "border-gray-900 bg-gray-50"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText size={18} className={generationMode === "template" ? "text-gray-900" : "text-gray-400"} />
+                        <span className={`font-semibold ${generationMode === "template" ? "text-gray-900" : "text-gray-700"}`}>
+                          Templates
+                        </span>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Fast</span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Pre-built templates with your company info filled in. Instant results.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Target Platforms <span className="text-red-500">*</span>
