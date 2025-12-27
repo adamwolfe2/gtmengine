@@ -4530,6 +4530,65 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
         </div>
 
         <div className="flex-1 overflow-auto p-4 md:p-8">
+          {/* Quick Stats Bar */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <FileText size={20} className="text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{contentAnalytics.totalPosts}</p>
+                  <p className="text-xs text-gray-500">Total Posts</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <CheckSquare size={20} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{Object.values(postStatuses).filter(s => s === "ready").length}</p>
+                  <p className="text-xs text-gray-500">Ready</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
+                  <Clock size={20} className="text-teal-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{Object.keys(scheduledPosts).length}</p>
+                  <p className="text-xs text-gray-500">Scheduled</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center">
+                  <Layers size={20} className="text-violet-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{Object.values(collections).reduce((sum, c) => sum + c.posts.length, 0)}</p>
+                  <p className="text-xs text-gray-500">Saved</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 col-span-2 md:col-span-1">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <BarChart3 size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{contentAnalytics.avgCharsPerPost}</p>
+                  <p className="text-xs text-gray-500">Avg Length</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {section === "library" && (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
