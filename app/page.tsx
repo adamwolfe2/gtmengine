@@ -43,6 +43,8 @@ import {
   Shuffle,
   Eye,
   Clock,
+  Share2,
+  ExternalLink,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
@@ -185,6 +187,68 @@ const exportContentCSV = (content: any, companyName: string, showToast?: boolean
   URL.revokeObjectURL(url)
 
   return totalPosts
+}
+
+// Export to Buffer/Hootsuite compatible CSV format
+const exportToBuffer = (content: any, scheduledPosts: Record<string, { date: string; time: string }>) => {
+  // Buffer CSV format: Text, Scheduled Date, Scheduled Time, Link (optional)
+  const rows = [["Text", "Scheduled Date", "Scheduled Time", "Link"]]
+
+  Object.entries(content).forEach(([platform, posts]: [string, any]) => {
+    posts.forEach((post: any) => {
+      const key = `${platform}-${post.id}`
+      const scheduled = scheduledPosts[key]
+      const date = scheduled?.date || ""
+      const time = scheduled?.time || ""
+      rows.push([post.content, date, time, ""])
+    })
+  })
+
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n")
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `buffer-import-${Date.now()}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  return rows.length - 1 // exclude header
+}
+
+// Export to Hootsuite compatible CSV format
+const exportToHootsuite = (content: any, scheduledPosts: Record<string, { date: string; time: string }>) => {
+  // Hootsuite CSV format: Date/Time, Message, Link (optional)
+  const rows = [["Date", "Message", "Link"]]
+
+  Object.entries(content).forEach(([platform, posts]: [string, any]) => {
+    posts.forEach((post: any) => {
+      const key = `${platform}-${post.id}`
+      const scheduled = scheduledPosts[key]
+      let dateTime = ""
+      if (scheduled?.date && scheduled?.time) {
+        // Format as MM/DD/YYYY HH:MM for Hootsuite
+        const [year, month, day] = scheduled.date.split("-")
+        dateTime = `${month}/${day}/${year} ${scheduled.time}`
+      }
+      rows.push([dateTime, post.content, ""])
+    })
+  })
+
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n")
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `hootsuite-import-${Date.now()}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  return rows.length - 1 // exclude header
 }
 
 const exportContentJSON = (content: any, companyName: string) => {
@@ -4868,6 +4932,48 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                           className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
                         >
                           <Download size={14} /> Export CSV
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <Share2 size={20} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900 mb-1">Export for Buffer</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Download content in Buffer-compatible CSV format for bulk scheduling
+                        </p>
+                        <button
+                          onClick={() => {
+                            const count = exportToBuffer(generatedContent, scheduledPosts)
+                            toast({ title: "Buffer Export", description: `Exported ${count} posts for Buffer import` })
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 transition"
+                        >
+                          <ExternalLink size={14} /> Export for Buffer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <Share2 size={20} className="text-teal-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900 mb-1">Export for Hootsuite</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Download content in Hootsuite-compatible CSV format for bulk publishing
+                        </p>
+                        <button
+                          onClick={() => {
+                            const count = exportToHootsuite(generatedContent, scheduledPosts)
+                            toast({ title: "Hootsuite Export", description: `Exported ${count} posts for Hootsuite import` })
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition"
+                        >
+                          <ExternalLink size={14} /> Export for Hootsuite
                         </button>
                       </div>
                     </div>
