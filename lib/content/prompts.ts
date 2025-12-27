@@ -2,11 +2,69 @@
  * Prompt builders for LLM-powered content generation
  */
 
-import type { FormData } from "@/types/form"
+import type { FormData, ContentLanguage } from "@/types/form"
 import type { Pillar } from "@/types/content"
 import { PILLARS } from "@/lib/constants/pillars"
 import { PLATFORM_CONTENT_TARGETS } from "@/lib/constants/platforms"
 import { getToneConfig } from "@/lib/constants/industries"
+
+// Language-specific writing guidelines
+const LANGUAGE_GUIDELINES: Record<string, string> = {
+  en: "",
+  es: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural Spanish (Español)
+- Use appropriate regional neutral Spanish that works across Latin America and Spain
+- Adapt idioms and expressions to feel natural in Spanish
+- Maintain professional tone while respecting Spanish linguistic conventions`,
+  fr: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural French (Français)
+- Use modern, professional French appropriate for business communication
+- Adapt expressions to feel natural for French-speaking audiences
+- Maintain the formal "vous" form for professional content`,
+  de: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural German (Deutsch)
+- Use Sie-form for professional tone
+- Adapt expressions to feel natural for German-speaking markets
+- Follow German conventions for business communication`,
+  pt: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural Portuguese (Português)
+- Use Brazilian Portuguese style unless specified otherwise
+- Adapt expressions to feel natural for Portuguese-speaking audiences
+- Maintain professional tone with appropriate formality`,
+  it: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural Italian (Italiano)
+- Use appropriate formal register for professional content
+- Adapt expressions to feel natural for Italian audiences
+- Follow Italian business communication conventions`,
+  nl: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural Dutch (Nederlands)
+- Use appropriate professional tone for business communication
+- Adapt expressions to feel natural for Dutch-speaking audiences`,
+  ja: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural Japanese (日本語)
+- Use appropriate politeness levels (丁寧語) for professional content
+- Adapt to Japanese business communication conventions
+- Consider cultural context and expression styles`,
+  ko: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural Korean (한국어)
+- Use appropriate honorifics and politeness levels for business
+- Adapt expressions to Korean business communication style
+- Consider cultural nuances in content presentation`,
+  zh: `
+## LANGUAGE REQUIREMENTS
+- Write ALL content in fluent, natural Simplified Chinese (简体中文)
+- Use appropriate formal register for professional content
+- Adapt expressions to feel natural for Chinese audiences
+- Consider cultural context and business communication norms`,
+}
 
 // Content pillar descriptions for the LLM
 const PILLAR_GUIDELINES: Record<Pillar, string> = {
@@ -123,7 +181,7 @@ ${formData.competitors || "Not specified"}
 - Typical CTA style: "${toneConfig.cta}"
 
 **Primary Goal:** ${formData.primaryGoal}
-
+${LANGUAGE_GUIDELINES[formData.contentLanguage || "en"] || ""}
 ${competitorInsights ? `
 ## COMPETITOR INSIGHTS
 Use these insights to differentiate and counter-position:
@@ -202,6 +260,8 @@ export function buildSinglePostPrompt(
   const guidelines = PLATFORM_GUIDELINES[platform as keyof typeof PLATFORM_GUIDELINES] || ""
   const pillarGuideline = PILLAR_GUIDELINES[pillar]
 
+  const languageGuideline = LANGUAGE_GUIDELINES[formData.contentLanguage || "en"] || ""
+
   return `You are an expert B2B content strategist. Generate a single ${platform} post for ${formData.companyName}.
 
 ## COMPANY CONTEXT
@@ -210,7 +270,7 @@ export function buildSinglePostPrompt(
 - Pain Points: ${formData.painPoints}
 - Value Prop: ${formData.uniqueValue}
 - Tone: ${formData.contentTone || "professional"}
-
+${languageGuideline}
 ## CONTENT PILLAR: ${pillar}
 ${pillarGuideline}
 

@@ -34,6 +34,33 @@ export type PrimaryGoal =
 // Platform identifiers for content distribution
 export type PlatformId = "linkedin" | "twitter" | "threads" | "email" | "ads"
 
+// Supported content languages
+export type ContentLanguage =
+  | "en"
+  | "es"
+  | "fr"
+  | "de"
+  | "pt"
+  | "it"
+  | "nl"
+  | "ja"
+  | "ko"
+  | "zh"
+
+// Language display names for UI
+export const LANGUAGE_OPTIONS: { value: ContentLanguage; label: string; flag: string }[] = [
+  { value: "en", label: "English", flag: "🇺🇸" },
+  { value: "es", label: "Spanish", flag: "🇪🇸" },
+  { value: "fr", label: "French", flag: "🇫🇷" },
+  { value: "de", label: "German", flag: "🇩🇪" },
+  { value: "pt", label: "Portuguese", flag: "🇵🇹" },
+  { value: "it", label: "Italian", flag: "🇮🇹" },
+  { value: "nl", label: "Dutch", flag: "🇳🇱" },
+  { value: "ja", label: "Japanese", flag: "🇯🇵" },
+  { value: "ko", label: "Korean", flag: "🇰🇷" },
+  { value: "zh", label: "Chinese", flag: "🇨🇳" },
+]
+
 // Tone configuration for content generation
 export interface ToneConfig {
   opener: string
@@ -73,6 +100,9 @@ export interface FormData {
   primaryGoal: PrimaryGoal | string
   contentTone: ContentTone | string
   targetPlatforms: PlatformId[]
+
+  // Content generation settings
+  contentLanguage?: ContentLanguage | string
 }
 
 // Initial/default form data values
@@ -96,6 +126,7 @@ export const defaultFormData: FormData = {
   primaryGoal: "",
   contentTone: "",
   targetPlatforms: [],
+  contentLanguage: "en",
 }
 
 // Parsed AI autofill response structure

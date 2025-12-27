@@ -58,6 +58,7 @@ import { parseCompetitors, formatInsightsForPrompt, loadCompetitorInsights, save
 import { toast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { FormData } from "@/types/form"
+import { LANGUAGE_OPTIONS } from "@/types/form"
 
 // ============================================
 // LOCAL STORAGE UTILITIES
@@ -3239,7 +3240,7 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
 // DASHBOARD
 // ============================================
 
-function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => void }) {
+function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; onReset: () => void; onUpdateData: (updates: Partial<FormData>) => void }) {
   const [section, setSection] = useState("library")
   const [platform, setPlatform] = useState("linkedin")
   const [pillar, setPillar] = useState("all")
@@ -6032,6 +6033,31 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                       />
                     </button>
                   </div>
+
+                  {/* Language Selector */}
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{LANGUAGE_OPTIONS.find(l => l.value === (companyData.contentLanguage || "en"))?.flag || "🇺🇸"}</span>
+                      <div>
+                        <h4 className="font-medium text-gray-900">Content Language</h4>
+                        <p className="text-sm text-gray-500">Language for AI-generated content</p>
+                      </div>
+                    </div>
+                    <select
+                      value={companyData.contentLanguage || "en"}
+                      onChange={(e) => {
+                        onUpdateData({ contentLanguage: e.target.value })
+                        toast({ title: "Language Updated", description: `Content will now be generated in ${LANGUAGE_OPTIONS.find(l => l.value === e.target.value)?.label || "English"}` })
+                      }}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    >
+                      {LANGUAGE_OPTIONS.map((lang) => (
+                        <option key={lang.value} value={lang.value}>
+                          {lang.flag} {lang.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -6775,6 +6801,14 @@ export default function GTMContentEngine() {
     setContent(null)
   }
 
+  const handleUpdateData = (updates: Partial<FormData>) => {
+    setData((prev: any) => {
+      const updated = { ...prev, ...updates }
+      saveToLocalStorage(STORAGE_KEYS.FORM_DATA, updated)
+      return updated
+    })
+  }
+
   // Show loading state while checking localStorage
   if (!isLoaded) {
     return (
@@ -6787,5 +6821,5 @@ export default function GTMContentEngine() {
   }
 
   if (!ready) return <OnboardingWizard onComplete={handleComplete} />
-  return <Dashboard companyData={data} onReset={handleReset} />
+  return <Dashboard companyData={data} onReset={handleReset} onUpdateData={handleUpdateData} />
 }
