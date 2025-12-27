@@ -44,6 +44,7 @@ import {
 import { parseAIResponse } from "@/lib/parse-ai-response"
 import { generateContentWithLLM, type GenerationProgress } from "@/lib/content/llm-generator"
 import { parseCompetitors, formatInsightsForPrompt, loadCompetitorInsights, saveCompetitorInsights, type CompetitorInsights } from "@/lib/competitors/analyzer"
+import type { FormData } from "@/types/form"
 
 // ============================================
 // LOCAL STORAGE UTILITIES
@@ -1550,6 +1551,8 @@ function OnboardingWizard({ onComplete }: { onComplete: (data: any, content: any
   const [showSettings, setShowSettings] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
+  const [isAutoFilling, setIsAutoFilling] = useState(false)
+  const [autofillResult, setAutofillResult] = useState<any>(null)
 
   const [formData, setFormData] = useState(() => {
     const saved = loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
@@ -1582,7 +1585,7 @@ function OnboardingWizard({ onComplete }: { onComplete: (data: any, content: any
     saveToLocalStorage(STORAGE_KEYS.FORM_DATA, formData)
   }, [formData])
 
-  const update = (field: string, value: any) => setFormData((prev) => ({ ...prev, [field]: value }))
+  const update = (field: string, value: unknown) => setFormData((prev: FormData) => ({ ...prev, [field]: value }))
 
   const generateAIPromptText = () => {
     const companyName = formData.companyName || "[Your Company Name]"
@@ -1682,7 +1685,7 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
     const parsed = parseAIResponse(aiResponse)
 
     // Update formData with all parsed values
-    setFormData((prev) => ({
+    setFormData((prev: FormData) => ({
       ...prev,
       productDescription: parsed.productDescription || prev.productDescription,
       targetAudience: parsed.targetAudience || prev.targetAudience,
@@ -1713,6 +1716,84 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     alert("Prompt copied to clipboard!")
+  }
+
+  // Direct AI autofill using Claude API
+  const handleDirectAutofill = async () => {
+    if (!formData.companyName) {
+      alert("Please enter a company name first")
+      return
+    }
+
+    setIsAutoFilling(true)
+    setAutofillResult(null)
+
+    try {
+      const response = await fetch("/api/autofill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyName: formData.companyName,
+          website: formData.website || undefined,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        if (result.code === "NO_API_KEY") {
+          alert("AI autofill is not available. The ANTHROPIC_API_KEY is not configured.")
+        } else {
+          alert(`Autofill failed: ${result.error || "Unknown error"}`)
+        }
+        setIsAutoFilling(false)
+        return
+      }
+
+      if (result.success) {
+        setAutofillResult(result)
+      } else {
+        alert("Could not find information for this company. Try adding a website URL.")
+      }
+    } catch (error) {
+      console.error("Autofill error:", error)
+      alert("Failed to research company. Please check your internet connection.")
+    } finally {
+      setIsAutoFilling(false)
+    }
+  }
+
+  // Apply autofill result to form data
+  const applyAutofillResult = () => {
+    if (!autofillResult?.data) return
+
+    const data = autofillResult.data
+
+    setFormData((prev: typeof formData) => ({
+      ...prev,
+      productDescription: data.productDescription || prev.productDescription,
+      targetAudience: data.targetAudience || prev.targetAudience,
+      jobTitles: data.jobTitles || prev.jobTitles,
+      painPoints: data.painPoints || prev.painPoints,
+      uniqueValue: data.uniqueValue || prev.uniqueValue,
+      keyBenefits: data.keyBenefits || prev.keyBenefits,
+      competitors: data.competitors || prev.competitors,
+      industry: data.industry || prev.industry,
+      companySize: data.companySize || prev.companySize,
+      primaryGoal: data.primaryGoal || prev.primaryGoal,
+      contentTone: data.contentTone || prev.contentTone,
+      targetPlatforms: prev.targetPlatforms.length > 0 ? prev.targetPlatforms : ["linkedin", "twitter", "email"],
+    }))
+
+    // Close modal and jump to Step 5
+    setShowAIModal(false)
+    setAutofillResult(null)
+    setStep(5)
+
+    // Show success feedback
+    setTimeout(() => {
+      alert(`✓ Autofilled ${autofillResult.completeness?.filledFields?.length || 0} fields from AI research`)
+    }, 100)
   }
 
   const handleComplete = async () => {
@@ -2209,7 +2290,7 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
                                 "currentChannels",
                                 e.target.checked
                                   ? [...formData.currentChannels, ch]
-                                  : formData.currentChannels.filter((c) => c !== ch),
+                                  : formData.currentChannels.filter((c: string) => c !== ch),
                               )
                             }
                             className="h-4 w-4 text-gray-900 rounded focus:ring-gray-900"
@@ -2366,7 +2447,7 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
                               "targetPlatforms",
                               e.target.checked
                                 ? [...formData.targetPlatforms, p.id]
-                                : formData.targetPlatforms.filter((x) => x !== p.id),
+                                : formData.targetPlatforms.filter((x: string) => x !== p.id),
                             )
                           }
                           className="h-4 w-4 text-gray-900 rounded focus:ring-gray-900"
@@ -2420,12 +2501,14 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">
-                  {aiModalStep === 1 ? "Step 1: Copy this prompt" : "Step 2: Paste AI response"}
+                  {aiModalStep === 1 ? "AI Company Research" : aiModalStep === 2 ? "Manual Paste (Backup)" : "Review & Apply"}
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
                   {aiModalStep === 1
-                    ? "Copy and paste into Claude or ChatGPT"
-                    : "Paste the full response from your AI assistant"}
+                    ? "Let AI research your company and fill the form"
+                    : aiModalStep === 2
+                      ? "Paste response from Claude/ChatGPT"
+                      : "Review the parsed information"}
                 </p>
               </div>
               <button
@@ -2433,6 +2516,8 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
                   setShowAIModal(false)
                   setAiModalStep(1)
                   setAiResponse("")
+                  setIsAutoFilling(false)
+                  setAutofillResult(null)
                 }}
                 className="p-2 hover:bg-gray-100 rounded-lg"
               >
@@ -2442,43 +2527,88 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
 
             <div className="p-6">
               {aiModalStep === 1 ? (
-                <>
-                  <textarea
-                    readOnly
-                    value={generateAIPromptText()}
-                    className="w-full h-96 px-4 py-3 border border-gray-200 rounded-lg text-sm font-mono bg-gray-50 resize-none focus:outline-none"
-                  />
-                  <div className="flex items-center gap-3 mt-4">
-                    <button
-                      onClick={copyAIPrompt}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition"
-                    >
-                      {aiPromptCopied ? (
-                        <>
-                          <Check size={18} /> Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={18} /> Copy Prompt
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setAiModalStep(2)}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition"
-                    >
-                      Next: Paste Response <ChevronRight size={16} />
-                    </button>
+                <div className="space-y-6">
+                  {/* One-click AI Research */}
+                  <div className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Sparkles size={24} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 mb-1">One-Click AI Research</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                          AI will research {formData.companyName || "your company"} and automatically fill in the form fields.
+                          {formData.website && ` Using website: ${formData.website}`}
+                        </p>
+                        <button
+                          onClick={handleDirectAutofill}
+                          disabled={isAutoFilling || !formData.companyName}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isAutoFilling ? (
+                            <>
+                              <RefreshCw size={18} className="animate-spin" />
+                              Researching {formData.companyName}...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={18} />
+                              Research & Autofill
+                            </>
+                          )}
+                        </button>
+                        {!formData.companyName && (
+                          <p className="text-xs text-red-600 mt-2">Enter a company name first</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </>
-              ) : (
+
+                  {/* Manual paste option */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-200"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white text-gray-500">or use manual paste</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setAiModalStep(2)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    <Copy size={18} />
+                    Copy prompt & paste response manually
+                  </button>
+                </div>
+              ) : aiModalStep === 2 ? (
                 <>
-                  <textarea
-                    value={aiResponse}
-                    onChange={(e) => setAiResponse(e.target.value)}
-                    placeholder="Paste the full AI response here..."
-                    className="w-full h-64 px-4 py-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-600 mb-2">Copy this prompt to Claude/ChatGPT:</p>
+                    <div className="relative">
+                      <textarea
+                        readOnly
+                        value={generateAIPromptText()}
+                        className="w-full h-40 px-4 py-3 border border-gray-200 rounded-lg text-xs font-mono bg-gray-50 resize-none focus:outline-none"
+                      />
+                      <button
+                        onClick={copyAIPrompt}
+                        className="absolute top-2 right-2 px-3 py-1 bg-gray-900 text-white text-xs rounded hover:bg-gray-800"
+                      >
+                        {aiPromptCopied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">Then paste the response here:</p>
+                    <textarea
+                      value={aiResponse}
+                      onChange={(e) => setAiResponse(e.target.value)}
+                      placeholder="Paste the full AI response here..."
+                      className="w-full h-48 px-4 py-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    />
+                  </div>
                   <div className="flex items-center gap-3 mt-4">
                     <button
                       onClick={() => setAiModalStep(1)}
@@ -2491,10 +2621,81 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
                       disabled={!aiResponse.trim()}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Sparkles size={16} /> Autofill & Continue
+                      <Sparkles size={16} /> Parse & Apply
                     </button>
                   </div>
                 </>
+              ) : (
+                /* Step 3: Review parsed results */
+                <div className="space-y-4">
+                  {autofillResult && (
+                    <>
+                      <div className={`p-4 rounded-lg ${
+                        autofillResult.dataQuality === "excellent" ? "bg-green-50 border border-green-200" :
+                        autofillResult.dataQuality === "good" ? "bg-blue-50 border border-blue-200" :
+                        autofillResult.dataQuality === "partial" ? "bg-yellow-50 border border-yellow-200" :
+                        "bg-orange-50 border border-orange-200"
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-gray-900">Data Quality: {autofillResult.dataQuality}</span>
+                          <span className="text-sm text-gray-600">{autofillResult.completeness?.percentage || 0}% complete</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              autofillResult.dataQuality === "excellent" ? "bg-green-600" :
+                              autofillResult.dataQuality === "good" ? "bg-blue-600" :
+                              autofillResult.dataQuality === "partial" ? "bg-yellow-600" :
+                              "bg-orange-600"
+                            }`}
+                            style={{ width: `${autofillResult.completeness?.percentage || 0}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="max-h-64 overflow-y-auto space-y-2">
+                        {Object.entries(autofillResult.data || {}).map(([key, value]: [string, unknown]) => (
+                          value ? (
+                            <div key={key} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
+                              <Check size={16} className="text-green-600 flex-shrink-0 mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-medium text-gray-500 uppercase">{key.replace(/([A-Z])/g, " $1")}</span>
+                                <p className="text-sm text-gray-900 truncate">{String(value).slice(0, 100)}{String(value).length > 100 ? "..." : ""}</p>
+                              </div>
+                            </div>
+                          ) : null
+                        ))}
+                      </div>
+
+                      {autofillResult.completeness?.missingFields?.length > 0 && (
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-sm text-yellow-800">
+                            <strong>Missing fields:</strong> {autofillResult.completeness.missingFields.join(", ")}
+                          </p>
+                          <p className="text-xs text-yellow-700 mt-1">You can fill these in manually after applying.</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div className="flex items-center gap-3 mt-4">
+                    <button
+                      onClick={() => {
+                        setAiModalStep(1)
+                        setAutofillResult(null)
+                      }}
+                      className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                    >
+                      <ChevronLeft size={16} /> Back
+                    </button>
+                    <button
+                      onClick={applyAutofillResult}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                    >
+                      <Check size={16} /> Apply to Form
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
