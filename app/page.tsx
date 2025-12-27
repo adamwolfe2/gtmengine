@@ -320,6 +320,41 @@ const INDUSTRIES = [
 ]
 
 // ============================================
+// OPTIMAL POSTING TIMES
+// ============================================
+
+const OPTIMAL_POSTING_TIMES = [
+  {
+    platform: "linkedin",
+    bestDays: ["Tue", "Wed", "Thu"],
+    peakHours: ["7-8 AM", "12 PM", "5-6 PM"],
+    avoid: "Weekends, late nights",
+    notes: "B2B audiences most active during work hours"
+  },
+  {
+    platform: "twitter",
+    bestDays: ["Mon", "Tue", "Wed", "Thu"],
+    peakHours: ["8-10 AM", "12-1 PM", "4-5 PM"],
+    avoid: "Sundays, very early morning",
+    notes: "Fast-paced, post multiple times per day"
+  },
+  {
+    platform: "threads",
+    bestDays: ["Mon", "Wed", "Fri"],
+    peakHours: ["11 AM-1 PM", "7-9 PM"],
+    avoid: "Early morning, late night",
+    notes: "Still evolving, test different times"
+  },
+  {
+    platform: "email",
+    bestDays: ["Tue", "Wed", "Thu"],
+    peakHours: ["9-10 AM", "1-2 PM"],
+    avoid: "Mondays, Fridays, weekends",
+    notes: "Mid-week, mid-morning performs best"
+  },
+]
+
+// ============================================
 // CONTENT TEMPLATES LIBRARY
 // ============================================
 
@@ -3299,6 +3334,7 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
     return saved || {}
   })
   const [showHistoryFor, setShowHistoryFor] = useState<string | null>(null)
+  const [showPostingTimes, setShowPostingTimes] = useState(false)
 
   useEffect(() => {
     saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT + "_history", contentHistory)
@@ -5233,6 +5269,61 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
                     <Download size={14} /> Export
                   </button>
                 </div>
+              </div>
+
+              {/* Best Posting Times */}
+              <div className="mb-6 bg-gradient-to-r from-teal-50 to-cyan-50 rounded-xl border border-teal-200 overflow-hidden">
+                <button
+                  onClick={() => setShowPostingTimes(!showPostingTimes)}
+                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-teal-100/50 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <Clock size={20} className="text-teal-600" />
+                    <div className="text-left">
+                      <h3 className="font-semibold text-gray-900">Best Posting Times</h3>
+                      <p className="text-sm text-gray-500">Optimal times for maximum engagement</p>
+                    </div>
+                  </div>
+                  <ChevronDown
+                    size={20}
+                    className={`text-gray-400 transition-transform ${showPostingTimes ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {showPostingTimes && (
+                  <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {OPTIMAL_POSTING_TIMES.map((pt) => (
+                      <div key={pt.platform} className="bg-white rounded-lg p-4 border border-gray-100">
+                        <div className="flex items-center gap-2 mb-3">
+                          {pt.platform === "linkedin" && <Linkedin size={18} className="text-blue-600" />}
+                          {pt.platform === "twitter" && <Twitter size={18} className="text-sky-500" />}
+                          {pt.platform === "threads" && <MessageCircle size={18} className="text-gray-700" />}
+                          {pt.platform === "email" && <Mail size={18} className="text-green-600" />}
+                          <span className="font-medium text-gray-900 capitalize">{pt.platform}</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <span className="text-xs text-gray-500 block mb-1">Best Days</span>
+                            <span className="text-sm font-medium text-gray-700">{pt.bestDays.join(", ")}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-gray-500 block mb-1">Peak Hours</span>
+                            <div className="flex flex-wrap gap-1">
+                              {pt.peakHours.map((h, i) => (
+                                <span key={i} className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
+                                  {h}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-xs text-gray-500 block mb-1">Avoid</span>
+                            <span className="text-xs text-red-600">{pt.avoid}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Show AI-generated calendar if available */}
