@@ -42,6 +42,8 @@ import {
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
+import { generateContentWithLLM, type GenerationProgress } from "@/lib/content/llm-generator"
+import { parseCompetitors, formatInsightsForPrompt, loadCompetitorInsights, saveCompetitorInsights, type CompetitorInsights } from "@/lib/competitors/analyzer"
 
 // ============================================
 // LOCAL STORAGE UTILITIES
@@ -54,6 +56,7 @@ const STORAGE_KEYS = {
 }
 
 const saveToLocalStorage = (key: string, data: any) => {
+  if (typeof window === "undefined") return
   try {
     localStorage.setItem(key, JSON.stringify(data))
   } catch (error) {
@@ -62,6 +65,7 @@ const saveToLocalStorage = (key: string, data: any) => {
 }
 
 const loadFromLocalStorage = (key: string) => {
+  if (typeof window === "undefined") return null
   try {
     const item = localStorage.getItem(key)
     return item ? JSON.parse(item) : null
@@ -1536,13 +1540,16 @@ function OnboardingWizard({ onComplete }: { onComplete: (data: any, content: any
   const [step, setStep] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [progressMessage, setProgressMessage] = useState("Preparing...")
+  const [generationMode, setGenerationMode] = useState<"template" | "llm">("llm") // Default to LLM
   const [aiModalStep, setAiModalStep] = useState<1 | 2>(1)
   const [aiPromptCopied, setAiPromptCopied] = useState(false)
   const [aiResponse, setAiResponse] = useState("")
   const [showAIModal, setShowAIModal] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
-  const [showSettings, setShowSettings] = useState(false) // Declared setShowSettings
-  const [showUserMenu, setShowUserMenu] = useState(false) // Declared showUserMenu
+  const [showSettings, setShowSettings] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const [generationError, setGenerationError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState(() => {
     const saved = loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
@@ -1710,16 +1717,96 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
 
   const handleComplete = async () => {
     setIsGenerating(true)
-    const interval = setInterval(() => {
-      setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 15))
-    }, 400)
+    setProgress(0)
+    setProgressMessage("Preparing your content engine...")
+    setGenerationError(null)
 
-    await new Promise((r) => setTimeout(r, 3000))
-    const content = generateContent(formData)
+    if (generationMode === "llm") {
+      // LLM-powered generation
+      try {
+        // First, fetch competitor insights if competitors are provided
+        let competitorInsights = ""
+        if (formData.competitors) {
+          setProgressMessage("Analyzing your competitors...")
+          setProgress(10)
 
-    clearInterval(interval)
-    setProgress(100)
-    setTimeout(() => onComplete(formData, content), 500)
+          try {
+            const competitors = parseCompetitors(formData)
+            const competitorResponse = await fetch("/api/competitors", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                companyName: formData.companyName,
+                industry: formData.industry,
+                competitors: competitors.map(c => c.name),
+                website: formData.website,
+              }),
+            })
+
+            if (competitorResponse.ok) {
+              const { insights } = await competitorResponse.json()
+              saveCompetitorInsights(insights)
+              competitorInsights = formatInsightsForPrompt(insights)
+            }
+          } catch (e) {
+            console.log("Competitor analysis skipped:", e)
+          }
+        }
+
+        setProgress(25)
+        setProgressMessage("AI is generating personalized content...")
+
+        // Generate content with LLM
+        const result = await generateContentWithLLM(
+          formData,
+          competitorInsights,
+          (progressUpdate: GenerationProgress) => {
+            setProgressMessage(progressUpdate.message)
+            setProgress(25 + (progressUpdate.progress * 0.7))
+          }
+        )
+
+        if (result.success && result.content) {
+          setProgress(100)
+          setProgressMessage("Content generated successfully!")
+          setTimeout(() => onComplete(formData, result.content), 500)
+        } else {
+          // Fallback to template generation
+          console.log("LLM generation failed, falling back to templates:", result.error)
+          setProgressMessage("Falling back to template generation...")
+          setProgress(80)
+
+          await new Promise((r) => setTimeout(r, 1000))
+          const content = generateContent(formData)
+
+          setProgress(100)
+          setProgressMessage("Content ready!")
+          setTimeout(() => onComplete(formData, content), 500)
+        }
+      } catch (error) {
+        console.error("Generation error:", error)
+        // Fallback to template generation
+        setProgressMessage("Using template generation...")
+        const content = generateContent(formData)
+        setProgress(100)
+        setTimeout(() => onComplete(formData, content), 500)
+      }
+    } else {
+      // Template-based generation (original)
+      const interval = setInterval(() => {
+        setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 15))
+      }, 400)
+
+      setProgressMessage("Generating content templates...")
+      await new Promise((r) => setTimeout(r, 2000))
+
+      const content = generateContent(formData)
+
+      clearInterval(interval)
+      setProgress(100)
+      setProgressMessage("Content ready!")
+      setTimeout(() => onComplete(formData, content), 500)
+    }
   }
 
   const canProceed = () => {
@@ -1762,262 +1849,111 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-md">
-          <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <img src="/images/campusgtm-20logo.png" alt="CampusGTM" className="w-12 h-12 object-contain" />
+          <div className="w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-6 animate-pulse">
+            <Sparkles size={28} className="text-white" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Generating Your Content Engine</h2>
-          <p className="text-gray-500 mb-6">Creating personalized content based on your business...</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {generationMode === "llm" ? "AI is Creating Your Content" : "Generating Your Content Engine"}
+          </h2>
+          <p className="text-gray-500 mb-6">{progressMessage}</p>
           <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
             <div
-              className="bg-gray-900 h-2 rounded-full transition-all duration-300"
+              className="bg-gray-900 h-2 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="space-y-2 text-sm text-gray-500">
-            {progress > 10 && <p>✓ Analyzing your ICP and pain points...</p>}
-            {progress > 30 && <p>✓ Crafting positioning and messaging...</p>}
-            {progress > 50 && <p>✓ Generating LinkedIn content...</p>}
-            {progress > 70 && <p>✓ Creating Twitter threads...</p>}
-            {progress > 90 && <p>✓ Finalizing your content library...</p>}
-          </div>
+          {generationMode === "llm" ? (
+            <div className="space-y-2 text-sm text-gray-500">
+              {progress > 5 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Analyzing company profile</p>}
+              {progress > 15 && formData.competitors && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Researching competitors</p>}
+              {progress > 30 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Crafting personalized messaging</p>}
+              {progress > 50 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Generating platform-specific content</p>}
+              {progress > 75 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Validating content quality</p>}
+              {progress > 95 && <p className="flex items-center justify-center gap-2"><Check size={14} className="text-green-600" /> Finalizing your content library</p>}
+            </div>
+          ) : (
+            <div className="space-y-2 text-sm text-gray-500">
+              {progress > 10 && <p>✓ Analyzing your ICP and pain points...</p>}
+              {progress > 30 && <p>✓ Crafting positioning and messaging...</p>}
+              {progress > 50 && <p>✓ Generating LinkedIn content...</p>}
+              {progress > 70 && <p>✓ Creating Twitter threads...</p>}
+              {progress > 90 && <p>✓ Finalizing your content library...</p>}
+            </div>
+          )}
+          {generationError && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {generationError}
+            </div>
+          )}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-      <div className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col">
-        <div className="flex items-center gap-3 p-4 border-b border-gray-200">
-          <div className="relative">
-            {formData.logo ? (
-              <img
-                src={formData.logo || "/placeholder.svg"}
-                alt={formData.companyName}
-                className="w-10 h-10 rounded-lg object-contain"
-              />
-            ) : (
-              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                <Building2 size={20} className="text-gray-400" />
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="font-semibold text-gray-900 text-sm">{formData.companyName || "My Company"}</div>
-            <div className="text-xs text-gray-500">{formData.targetPlatforms.length} platforms</div>
-          </div>
-        </div>
-        <nav className="flex-1 p-3 space-1">
-          {[
-            { id: "library", icon: FileText, label: "Content Library", badge: formData.targetPlatforms.length },
-            { id: "calendar", icon: Calendar, label: "90-Day Calendar" },
-            { id: "tasks", icon: CheckSquare, label: "Daily Tasks" },
-            { id: "pillars", icon: Target, label: "Content Pillars" },
-            { id: "metrics", icon: BarChart3, label: "Metrics & KPIs" },
-          ].map((n) => (
-            <button
-              key={n.id}
-              onClick={() => setStep(n.num)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition ${
-                step === n.num
-                  ? "bg-transparent text-gray-900 font-medium border-l-2 border-gray-900 rounded-l-none"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <n.icon size={18} />
-              <span>{n.label}</span>
-              {n.badge && <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{n.badge}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-gray-200 space-1">
-          <button
-            onClick={() => setShowSettings(true)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
-          >
-            <Settings size={18} />
-            <span>Settings</span>
-          </button>
-          <button
-            onClick={onComplete} // This should likely be the reset function, but for now, just call onComplete
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50"
-          >
-            <LogOut size={18} />
-            <span>Reset</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="md:hidden bg-white border-b border-gray-200 p-4 sticky top-0 z-40">
-        <div className="flex items-center justify-between">
-          <button onClick={() => setShowMobileMenu(true)} className="p-2 hover:bg-gray-100 rounded-lg">
-            <Menu size={20} />
-          </button>
-          <div className="flex items-center gap-2">
-            {formData.logo ? (
-              <img
-                src={formData.logo || "/placeholder.svg"}
-                alt={formData.companyName}
-                className="w-8 h-8 rounded object-contain"
-              />
-            ) : (
-              <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-                <Building2 size={16} className="text-gray-400" />
-              </div>
-            )}
-            <span className="text-sm font-bold">{formData.companyName || "My Company"}</span>
-          </div>
-          <button onClick={() => setShowUserMenu(!showUserMenu)} className="p-2 hover:bg-gray-100 rounded-lg relative">
-            <User size={20} />
-          </button>
-        </div>
-      </div>
-
-      {showMobileMenu && (
-        <div className="md:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setShowMobileMenu(false)}>
-          <div className="bg-white w-64 h-full flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {formData.logo ? (
-                  <img
-                    src={formData.logo || "/placeholder.svg"}
-                    alt={formData.companyName}
-                    className="w-10 h-10 rounded-lg object-contain"
-                  />
-                ) : (
-                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <Building2 size={20} className="text-gray-400" />
-                  </div>
-                )}
-                <div>
-                  <h1 className="text-sm font-bold text-gray-900">{formData.companyName || "My Company"}</h1>
-                  <p className="text-xs text-gray-500">Content Engine</p>
-                </div>
-              </div>
-              <button onClick={() => setShowMobileMenu(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X size={20} />
-              </button>
-            </div>
-
-            <nav className="flex-1 p-4 space-1">
-              {[
-                { id: "library", label: "Content Library", icon: FileText, badge: formData.targetPlatforms.length },
-                { id: "calendar", label: "Calendar", icon: Calendar },
-                { id: "tasks", label: "Daily Tasks", icon: CheckSquare, badge: `${formData.targetPlatforms.length}/6` },
-                { id: "pillars", label: "Content Pillars", icon: Target },
-                { id: "metrics", label: "Metrics", icon: TrendingUp },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setStep(steps.find((s) => s.title.toLowerCase().replace(" ", "") === item.id)?.num || 1)
-                    setShowMobileMenu(false)
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left ${
-                    step === steps.find((s) => s.title.toLowerCase().replace(" ", "") === item.id)?.num
-                      ? "bg-gray-50 text-gray-900 border-l-4 border-gray-900 font-medium"
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <item.icon size={18} />
-                  <span className="text-sm">{item.label}</span>
-                  {item.badge && (
-                    <span className="ml-auto text-xs bg-gray-200 px-2 py-0.5 rounded-full">{item.badge}</span>
-                  )}
-                </button>
-              ))}
-            </nav>
-
-            <div className="p-4 border-t border-gray-200 space-1">
-              <button
-                onClick={() => {
-                  setShowSettings(true)
-                  setShowMobileMenu(false)
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
-              >
-                <Settings size={18} />
-                <span className="text-sm">Settings</span>
-              </button>
-              <button
-                onClick={() => {
-                  onComplete() // This should likely be the reset function
-                  setShowMobileMenu(false)
-                }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 text-left"
-              >
-                <LogOut size={18} />
-                <span className="text-sm">Reset</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="hidden md:flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Home size={16} />
-              <ChevronRight size={14} />
-              <span className="text-gray-900 font-medium">
-                {step === 1
-                  ? "Company"
-                  : step === 2
-                    ? "Audience"
-                    : step === 3
-                      ? "Positioning"
-                      : step === 4
-                        ? "Current State"
-                        : "Goals"}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-700">
-              <Building2 size={16} />
-              <span className="font-medium">{formData.companyName}</span>
-              <span className="text-gray-300">•</span>
-              <span className="text-gray-500">{formData.industry}</span>
-            </div>
-            <div className="relative">
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-2 hover:bg-gray-50 rounded-lg p-1.5"
-              >
-                {formData.logo ? (
-                  <img
-                    src={formData.logo || "/placeholder.svg"}
-                    alt="User"
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                    <User size={16} className="text-gray-600" />
-                  </div>
-                )}
-              </button>
-              {showUserMenu && (
-                <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-10">
-                  <button
-                    onClick={onComplete} // This should likely be the reset function
-                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    Reset Onboarding
-                  </button>
-                  <button
-                    onClick={() => setShowSettings(true)}
-                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    Settings
-                  </button>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header with logo and step indicator */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          {/* Top row: Logo/title */}
+          <div className="flex items-center justify-center mb-4">
+            <div className="flex items-center gap-3">
+              {formData.logo ? (
+                <img
+                  src={formData.logo || "/placeholder.svg"}
+                  alt={formData.companyName}
+                  className="w-10 h-10 rounded-lg object-contain"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
+                  <Sparkles size={20} className="text-white" />
                 </div>
               )}
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">
+                  {formData.companyName || "GTM Content Engine"}
+                </h1>
+                <p className="text-xs text-gray-500">Complete setup to generate your content</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Step indicator - horizontal */}
+          <div className="flex items-center justify-center">
+            <div className="flex items-center gap-1 md:gap-2">
+              {steps.map((s, idx) => (
+                <div key={s.num} className="flex items-center">
+                  <button
+                    onClick={() => {
+                      // Only allow going back to completed steps
+                      if (s.num < step) setStep(s.num)
+                    }}
+                    disabled={s.num > step}
+                    className={`flex items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium transition ${
+                      step === s.num
+                        ? "bg-gray-900 text-white"
+                        : s.num < step
+                          ? "bg-gray-200 text-gray-700 hover:bg-gray-300 cursor-pointer"
+                          : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    }`}
+                  >
+                    <s.icon size={14} className="hidden sm:block" />
+                    <span className="hidden sm:inline">{s.title}</span>
+                    <span className="sm:hidden">{s.num}</span>
+                  </button>
+                  {idx < steps.length - 1 && (
+                    <ChevronRight size={14} className="text-gray-300 mx-0.5 md:mx-1" />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="flex-1 overflow-auto p-4 md:p-8">
+      {/* Main content area - centered */}
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-2xl mx-auto p-4 md:p-8">
           {step === 1 && (
             <div className="space-y-6">
               <div>
@@ -2357,6 +2293,56 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
                     <option value="inspiring">Inspiring</option>
                   </select>
                 </div>
+                {/* Generation Mode Toggle */}
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Content Generation Method
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setGenerationMode("llm")}
+                      className={`p-4 rounded-lg border-2 text-left transition ${
+                        generationMode === "llm"
+                          ? "border-blue-600 bg-blue-50"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Sparkles size={18} className={generationMode === "llm" ? "text-blue-600" : "text-gray-400"} />
+                        <span className={`font-semibold ${generationMode === "llm" ? "text-blue-900" : "text-gray-700"}`}>
+                          AI-Powered
+                        </span>
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Recommended</span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Claude generates unique, personalized content based on your company profile
+                        {formData.competitors && " and competitor analysis"}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGenerationMode("template")}
+                      className={`p-4 rounded-lg border-2 text-left transition ${
+                        generationMode === "template"
+                          ? "border-gray-900 bg-gray-50"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText size={18} className={generationMode === "template" ? "text-gray-900" : "text-gray-400"} />
+                        <span className={`font-semibold ${generationMode === "template" ? "text-gray-900" : "text-gray-700"}`}>
+                          Templates
+                        </span>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Fast</span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Pre-built templates with your company info filled in. Instant results.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Target Platforms <span className="text-red-500">*</span>
@@ -2627,6 +2613,41 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     return loadFromLocalStorage(STORAGE_KEYS.DAILY_TASKS) || {}
   })
 
+  // Competitor insights state
+  const [competitorInsights, setCompetitorInsights] = useState<CompetitorInsights | null>(() => {
+    return loadCompetitorInsights()
+  })
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false)
+
+  const refreshCompetitorInsights = async () => {
+    if (!companyData?.competitors) return
+
+    setIsLoadingInsights(true)
+    try {
+      const competitors = parseCompetitors(companyData)
+      const response = await fetch("/api/competitors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyName: companyData.companyName,
+          industry: companyData.industry,
+          competitors: competitors.map((c: any) => c.name),
+          website: companyData.website,
+        }),
+      })
+
+      if (response.ok) {
+        const { insights } = await response.json()
+        saveCompetitorInsights(insights)
+        setCompetitorInsights(insights)
+      }
+    } catch (error) {
+      console.error("Failed to refresh competitor insights:", error)
+    } finally {
+      setIsLoadingInsights(false)
+    }
+  }
+
   const filtered = () => {
     let posts = generatedContent[platform] || []
     if (pillar !== "all") posts = posts.filter((p: any) => p.pillar.toLowerCase().includes(pillar.toLowerCase()))
@@ -2712,6 +2733,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
             { id: "calendar", icon: Calendar, label: "90-Day Calendar" },
             { id: "tasks", icon: CheckSquare, label: "Daily Tasks", badge: `${done}/${tasks.length}` },
             { id: "pillars", icon: Target, label: "Content Pillars" },
+            { id: "competitors", icon: Users, label: "Competitor Insights" },
             { id: "metrics", icon: BarChart3, label: "Metrics & KPIs" },
           ].map((n) => (
             <button
@@ -3272,6 +3294,133 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
             </div>
           )}
 
+          {section === "competitors" && (
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Competitor Insights</h2>
+                  <p className="text-gray-500">Intelligence on your competition's content strategy</p>
+                </div>
+                <button
+                  onClick={refreshCompetitorInsights}
+                  disabled={isLoadingInsights || !companyData?.competitors}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw size={16} className={isLoadingInsights ? "animate-spin" : ""} />
+                  {isLoadingInsights ? "Analyzing..." : "Refresh Analysis"}
+                </button>
+              </div>
+
+              {!companyData?.competitors ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+                  <Users size={48} className="mx-auto text-yellow-500 mb-4" />
+                  <h3 className="text-lg font-semibold text-yellow-900 mb-2">No Competitors Configured</h3>
+                  <p className="text-yellow-700 text-sm">
+                    Add competitors during onboarding to get AI-powered competitive insights.
+                  </p>
+                </div>
+              ) : !competitorInsights ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+                  <Sparkles size={48} className="mx-auto text-blue-500 mb-4" />
+                  <h3 className="text-lg font-semibold text-blue-900 mb-2">Generate Competitor Analysis</h3>
+                  <p className="text-blue-700 text-sm mb-4">
+                    Click "Refresh Analysis" to get AI-powered insights on your competitors' content strategies.
+                  </p>
+                  <button
+                    onClick={refreshCompetitorInsights}
+                    disabled={isLoadingInsights}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isLoadingInsights ? "Analyzing..." : "Analyze Competitors"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Summary */}
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-6">
+                    <h3 className="font-semibold text-gray-900 mb-2">Executive Summary</h3>
+                    <p className="text-gray-700">{competitorInsights.summary}</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Last updated: {new Date(competitorInsights.generatedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  {/* Competitor Analysis */}
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-200">
+                      <h3 className="font-semibold text-gray-900">Competitor Breakdown</h3>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {competitorInsights.competitors?.map((comp, idx) => (
+                        <div key={idx} className="p-6">
+                          <h4 className="font-semibold text-gray-900 mb-4">{comp.competitor}</h4>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              <h5 className="text-sm font-medium text-green-700 mb-2">Strengths</h5>
+                              <ul className="space-y-2">
+                                {comp.strengths?.slice(0, 3).map((s, i) => (
+                                  <li key={i} className="text-sm text-gray-600 flex gap-2">
+                                    <Check size={14} className="text-green-600 flex-shrink-0 mt-0.5" />
+                                    <span><strong>{s.strength}</strong> - {s.example}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <h5 className="text-sm font-medium text-orange-700 mb-2">Opportunities for You</h5>
+                              <ul className="space-y-2">
+                                {comp.weaknesses?.slice(0, 3).map((w, i) => (
+                                  <li key={i} className="text-sm text-gray-600 flex gap-2">
+                                    <Target size={14} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                                    <span><strong>{w.weakness}</strong> - {w.opportunity}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recommended Angles */}
+                  {competitorInsights.recommendedAngles && competitorInsights.recommendedAngles.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 p-6">
+                      <h3 className="font-semibold text-gray-900 mb-4">Recommended Content Angles</h3>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {competitorInsights.recommendedAngles.map((angle, idx) => (
+                          <div key={idx} className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <h4 className="font-medium text-green-900 mb-1">{angle.angle}</h4>
+                            <p className="text-sm text-green-700 mb-2">{angle.rationale}</p>
+                            <p className="text-xs text-green-600 font-medium">Differentiator: {angle.differentiator}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* What to Avoid */}
+                  {competitorInsights.avoidList && competitorInsights.avoidList.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 p-6">
+                      <h3 className="font-semibold text-gray-900 mb-4">What to Avoid</h3>
+                      <div className="space-y-3">
+                        {competitorInsights.avoidList.map((item, idx) => (
+                          <div key={idx} className="flex gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <X size={18} className="text-red-600 flex-shrink-0" />
+                            <div>
+                              <span className="font-medium text-red-900">{item.tactic}</span>
+                              <p className="text-sm text-red-700">{item.reason}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {section === "metrics" && (
             <div className="p-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Metrics & KPIs</h2>
@@ -3499,19 +3648,29 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
 // ============================================
 
 export default function GTMContentEngine() {
-  const [ready, setReady] = useState(() => {
-    return loadFromLocalStorage(STORAGE_KEYS.READY_STATE) || false
-  })
-  const [data, setData] = useState<any>(() => {
-    return loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
-  })
-  const [content, setContent] = useState<any>(() => {
-    return loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT)
-  })
+  const [isLoaded, setIsLoaded] = useState(false)
+  const [ready, setReady] = useState(false)
+  const [data, setData] = useState<any>(null)
+  const [content, setContent] = useState<any>(null)
+
+  // Load from localStorage on mount (client-side only)
+  useEffect(() => {
+    const savedReady = loadFromLocalStorage(STORAGE_KEYS.READY_STATE)
+    const savedData = loadFromLocalStorage(STORAGE_KEYS.FORM_DATA)
+    const savedContent = loadFromLocalStorage(STORAGE_KEYS.GENERATED_CONTENT)
+
+    if (savedReady) setReady(savedReady)
+    if (savedData) setData(savedData)
+    if (savedContent) setContent(savedContent)
+
+    setIsLoaded(true)
+  }, [])
 
   useEffect(() => {
-    saveToLocalStorage(STORAGE_KEYS.READY_STATE, ready)
-  }, [ready])
+    if (isLoaded) {
+      saveToLocalStorage(STORAGE_KEYS.READY_STATE, ready)
+    }
+  }, [ready, isLoaded])
 
   const handleComplete = (formData: any, generatedContent: any) => {
     setData(formData)
@@ -3523,11 +3682,23 @@ export default function GTMContentEngine() {
   }
 
   const handleReset = () => {
-    localStorage.clear()
+    if (typeof window !== "undefined") {
+      localStorage.clear()
+    }
     setReady(false)
     setData(null)
     setContent(null)
-    // Optionally, reset other states here if needed
+  }
+
+  // Show loading state while checking localStorage
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center animate-pulse">
+          <Sparkles size={20} className="text-white" />
+        </div>
+      </div>
+    )
   }
 
   if (!ready) return <OnboardingWizard onComplete={handleComplete} />
