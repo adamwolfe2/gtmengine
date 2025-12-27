@@ -119,17 +119,19 @@ const importData = (file: File, onSuccess: () => void) => {
   reader.readAsText(file)
 }
 
-const exportContentCSV = (content: any, companyName: string) => {
-  const rows = [["Platform", "ID", "Title", "Pillar", "Content"]]
+const exportContentCSV = (content: any, companyName: string, showToast?: boolean) => {
+  const rows = [["Platform", "ID", "Title", "Pillar", "Status", "Content"]]
 
+  let totalPosts = 0
   Object.entries(content).forEach(([platform, posts]: [string, any]) => {
     posts.forEach((post: any) => {
-      rows.push([platform, post.id.toString(), post.title, post.pillar, post.content.replace(/\n/g, " ")])
+      rows.push([platform, post.id.toString(), post.title, post.pillar, post.status || "ready", post.content.replace(/\n/g, " ")])
+      totalPosts++
     })
   })
 
-  const csv = rows.map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n")
-  const blob = new Blob([csv], { type: "text/csv" })
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n")
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
@@ -138,6 +140,36 @@ const exportContentCSV = (content: any, companyName: string) => {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+
+  return totalPosts
+}
+
+const exportContentJSON = (content: any, companyName: string) => {
+  const exportData = {
+    exportDate: new Date().toISOString(),
+    company: companyName,
+    content: content,
+    summary: {
+      linkedin: (content.linkedin || []).length,
+      twitter: (content.twitter || []).length,
+      threads: (content.threads || []).length,
+      email: (content.email || []).length,
+      ads: (content.ads || []).length,
+    },
+  }
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `${companyName}-content-library-${Date.now()}.json`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  const total = Object.values(exportData.summary).reduce((a, b) => a + b, 0)
+  return total
 }
 
 // ============================================
@@ -2722,6 +2754,8 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [editContent, setEditContent] = useState("")
   const [postStatuses, setPostStatuses] = useState<Record<string, "ready" | "review">>({})
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set())
+  const [critiquingPost, setCritiquingPost] = useState<string | null>(null)
+  const [critiqueResult, setCritiqueResult] = useState<any | null>(null)
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -2875,6 +2909,46 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     URL.revokeObjectURL(url)
 
     toast({ title: "Exported", description: `Exported ${exportData.length} posts` })
+  }
+
+  // Critique a post using AI
+  const handleCritiquePost = async (platform: string, postId: number, content: string) => {
+    const key = `${platform}-${postId}`
+    setCritiquingPost(key)
+    setCritiqueResult(null)
+
+    try {
+      const response = await fetch("/api/critique", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          platform,
+          formData: companyData,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast({ title: "Error", description: result.error || "Failed to critique post", variant: "destructive" })
+        setCritiquingPost(null)
+        return
+      }
+
+      if (result.success) {
+        setCritiqueResult(result.critique)
+        toast({ title: "Critique Ready", description: `Overall score: ${result.critique.overallScore}/10` })
+      }
+    } catch (error) {
+      console.error("Critique error:", error)
+      toast({ title: "Error", description: "Failed to critique post. Please try again.", variant: "destructive" })
+    }
+  }
+
+  const closeCritique = () => {
+    setCritiquingPost(null)
+    setCritiqueResult(null)
   }
 
   const togglePostStatus = (platform: string, postId: number) => {
@@ -3477,6 +3551,17 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                             >
                               <RefreshCw size={14} /> Regenerate
                             </button>
+                            <button
+                              onClick={() => handleCritiquePost(platform, post.id, post.content)}
+                              disabled={critiquingPost === key}
+                              className="flex items-center gap-2 px-4 py-2 border border-purple-200 text-purple-600 text-sm rounded-lg hover:bg-purple-50 disabled:opacity-50"
+                            >
+                              {critiquingPost === key ? (
+                                <><RefreshCw size={14} className="animate-spin" /> Analyzing...</>
+                              ) : (
+                                <><Sparkles size={14} /> Get Feedback</>
+                              )}
+                            </button>
                             {isEditing ? (
                               <>
                                 <button
@@ -3501,6 +3586,91 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                               </button>
                             )}
                           </div>
+
+                          {/* Critique Results */}
+                          {critiquingPost === key && critiqueResult && (
+                            <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-medium text-purple-900">AI Feedback</h4>
+                                <button
+                                  onClick={closeCritique}
+                                  className="text-purple-600 hover:text-purple-800"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+
+                              {/* Scores */}
+                              <div className="grid grid-cols-4 gap-2 mb-4">
+                                <div className="text-center p-2 bg-white rounded-lg">
+                                  <div className="text-xl font-bold text-purple-600">{critiqueResult.overallScore}/10</div>
+                                  <div className="text-xs text-gray-600">Overall</div>
+                                </div>
+                                <div className="text-center p-2 bg-white rounded-lg">
+                                  <div className="text-lg font-bold text-blue-600">{critiqueResult.hookScore}/10</div>
+                                  <div className="text-xs text-gray-600">Hook</div>
+                                </div>
+                                <div className="text-center p-2 bg-white rounded-lg">
+                                  <div className="text-lg font-bold text-green-600">{critiqueResult.clarityScore}/10</div>
+                                  <div className="text-xs text-gray-600">Clarity</div>
+                                </div>
+                                <div className="text-center p-2 bg-white rounded-lg">
+                                  <div className="text-lg font-bold text-orange-600">{critiqueResult.ctaScore}/10</div>
+                                  <div className="text-xs text-gray-600">CTA</div>
+                                </div>
+                              </div>
+
+                              {/* Strengths */}
+                              {critiqueResult.strengths?.length > 0 && (
+                                <div className="mb-3">
+                                  <h5 className="text-sm font-medium text-green-800 mb-1">Strengths</h5>
+                                  <ul className="text-sm text-gray-700 space-y-1">
+                                    {critiqueResult.strengths.map((s: string, i: number) => (
+                                      <li key={i} className="flex items-start gap-2">
+                                        <Check size={14} className="text-green-600 mt-0.5 flex-shrink-0" />
+                                        {s}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Weaknesses */}
+                              {critiqueResult.weaknesses?.length > 0 && (
+                                <div className="mb-3">
+                                  <h5 className="text-sm font-medium text-red-800 mb-1">Areas to Improve</h5>
+                                  <ul className="text-sm text-gray-700 space-y-1">
+                                    {critiqueResult.weaknesses.map((w: string, i: number) => (
+                                      <li key={i} className="flex items-start gap-2">
+                                        <X size={14} className="text-red-600 mt-0.5 flex-shrink-0" />
+                                        {w}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Rewritten Version */}
+                              {critiqueResult.rewrittenVersion && (
+                                <div>
+                                  <h5 className="text-sm font-medium text-purple-800 mb-1">Improved Version</h5>
+                                  <div className="bg-white p-3 rounded-lg text-sm text-gray-700 whitespace-pre-wrap">
+                                    {critiqueResult.rewrittenVersion}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setEditContent(critiqueResult.rewrittenVersion)
+                                      setEditingPost(key)
+                                      closeCritique()
+                                    }}
+                                    className="mt-2 text-sm text-purple-600 hover:text-purple-800 font-medium"
+                                  >
+                                    Use this version →
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3898,7 +4068,10 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                           Download your complete GTM engine data as JSON (includes company info, content, and tasks)
                         </p>
                         <button
-                          onClick={exportAllData}
+                          onClick={() => {
+                            exportAllData()
+                            toast({ title: "Exported", description: "All data exported to JSON file" })
+                          }}
                           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
                         >
                           <Download size={14} /> Export JSON
@@ -3935,7 +4108,10 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                           Download all your content posts in spreadsheet format for easy sharing
                         </p>
                         <button
-                          onClick={() => exportContentCSV(generatedContent, companyData.companyName)}
+                          onClick={() => {
+                            const count = exportContentCSV(generatedContent, companyData.companyName)
+                            toast({ title: "Exported", description: `Exported ${count} posts to CSV` })
+                          }}
                           className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
                         >
                           <Download size={14} /> Export CSV
