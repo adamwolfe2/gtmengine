@@ -2776,6 +2776,9 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [scoringPost, setScoringPost] = useState<string | null>(null)
   const [scoringResult, setScoringResult] = useState<any | null>(null)
   const [previewPost, setPreviewPost] = useState<{ platform: string; content: string; title: string } | null>(null)
+  const [regeneratePost, setRegeneratePost] = useState<{ platform: string; postId: number; content: string; title: string } | null>(null)
+  const [regenerateFeedback, setRegenerateFeedback] = useState("")
+  const [isRegenerating, setIsRegenerating] = useState(false)
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -2815,13 +2818,58 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   }, [generatedContent])
 
   const handleRegeneratePost = (platform: string, postId: number) => {
-    // In a real app, this would call an AI API to regenerate
-    toast({ title: "Regenerating", description: `Regenerating ${platform} post #${postId}...` })
-    // For now, just mark as review
-    setPostStatuses((prev) => ({
-      ...prev,
-      [`${platform}-${postId}`]: "review",
-    }))
+    // Find the post to get its content
+    const posts = generatedContent[platform] || []
+    const post = posts.find((p: any) => p.id === postId)
+    if (post) {
+      setRegeneratePost({ platform, postId, content: post.content, title: post.title })
+      setRegenerateFeedback("")
+    }
+  }
+
+  const executeRegenerate = async () => {
+    if (!regeneratePost) return
+
+    setIsRegenerating(true)
+    const { platform, postId, content, title } = regeneratePost
+
+    try {
+      const response = await fetch("/api/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          platform,
+          feedback: regenerateFeedback || undefined,
+          formData: companyData,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast({ title: "Error", description: result.error || "Failed to regenerate", variant: "destructive" })
+        return
+      }
+
+      if (result.success && result.newContent) {
+        // Update the post content
+        const updatedContent = { ...generatedContent }
+        const postIndex = updatedContent[platform].findIndex((p: any) => p.id === postId)
+        if (postIndex !== -1) {
+          updatedContent[platform][postIndex].content = result.newContent
+          setGeneratedContent(updatedContent)
+          toast({ title: "Regenerated", description: "Post content updated successfully" })
+        }
+      }
+    } catch (error) {
+      console.error("Regeneration error:", error)
+      toast({ title: "Error", description: "Failed to regenerate post", variant: "destructive" })
+    } finally {
+      setIsRegenerating(false)
+      setRegeneratePost(null)
+      setRegenerateFeedback("")
+    }
   }
 
   const handleEditPost = (platform: string, postId: number, content: string) => {
@@ -4583,6 +4631,81 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
           </button>
         </div>
       )}
+
+      {/* Regenerate with Feedback Dialog */}
+      <Dialog open={!!regeneratePost} onOpenChange={(open) => !open && setRegeneratePost(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw size={18} />
+              Regenerate Post
+            </DialogTitle>
+          </DialogHeader>
+          {regeneratePost && (
+            <div className="mt-4 space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Current Content</h4>
+                <p className="text-sm text-gray-700 line-clamp-4">{regeneratePost.content}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  What would you like to change? (optional)
+                </label>
+                <textarea
+                  value={regenerateFeedback}
+                  onChange={(e) => setRegenerateFeedback(e.target.value)}
+                  placeholder="e.g., Make it more casual, add a question at the end, focus on the pain point..."
+                  className="w-full p-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 min-h-[100px]"
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <h5 className="text-sm font-medium text-blue-900 mb-1">Quick Suggestions</h5>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "Make it shorter",
+                    "Add a question",
+                    "More casual tone",
+                    "Stronger hook",
+                    "Add urgency",
+                    "Focus on benefits",
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setRegenerateFeedback((prev) => prev ? `${prev}, ${suggestion.toLowerCase()}` : suggestion)}
+                      className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setRegeneratePost(null)}
+                  disabled={isRegenerating}
+                  className="px-4 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeRegenerate}
+                  disabled={isRegenerating}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {isRegenerating ? (
+                    <><RefreshCw size={14} className="animate-spin" /> Regenerating...</>
+                  ) : (
+                    <><RefreshCw size={14} /> Regenerate</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Post Preview Modal */}
       <Dialog open={!!previewPost} onOpenChange={(open) => !open && setPreviewPost(null)}>
