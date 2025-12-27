@@ -3285,7 +3285,10 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
 
   const [editingPost, setEditingPost] = useState<string | null>(null)
   const [editContent, setEditContent] = useState("")
-  const [postStatuses, setPostStatuses] = useState<Record<string, "ready" | "review">>({})
+  const [postStatuses, setPostStatuses] = useState<Record<string, "draft" | "review" | "approved" | "published">>(() => {
+    const saved = loadFromLocalStorage("gtm_post_statuses")
+    return saved || {}
+  })
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set())
   const [critiquingPost, setCritiquingPost] = useState<string | null>(null)
   const [critiqueResult, setCritiqueResult] = useState<any | null>(null)
@@ -3356,6 +3359,11 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
   useEffect(() => {
     saveToLocalStorage("gtm_collections", collections)
   }, [collections])
+
+  // Save post statuses to localStorage
+  useEffect(() => {
+    saveToLocalStorage("gtm_post_statuses", postStatuses)
+  }, [postStatuses])
 
   // Collection management functions
   const createCollection = (name: string) => {
@@ -3590,13 +3598,13 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
 
   useEffect(() => {
     if (generatedContent) {
-      const statuses: Record<string, "ready" | "review"> = {}
+      const statuses: Record<string, "draft" | "review" | "approved" | "published"> = {}
       Object.entries(generatedContent).forEach(([platform, posts]: [string, any]) => {
         posts.forEach((post: any) => {
-          statuses[`${platform}-${post.id}`] = post.status || "ready"
+          statuses[`${platform}-${post.id}`] = post.status || "draft"
         })
       })
-      setPostStatuses(statuses)
+      setPostStatuses(prev => ({ ...prev, ...statuses }))
     }
   }, [generatedContent])
 
@@ -4125,12 +4133,21 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
     }
   }
 
-  const togglePostStatus = (platform: string, postId: number) => {
+  const setPostStatus = (platform: string, postId: number, status: "draft" | "review" | "approved" | "published") => {
     const key = `${platform}-${postId}`
     setPostStatuses((prev) => ({
       ...prev,
-      [key]: prev[key] === "ready" ? "review" : "ready",
+      [key]: status,
     }))
+    const statusLabels = { draft: "Draft", review: "Needs Review", approved: "Approved", published: "Published" }
+    toast({ title: "Status Updated", description: `Post marked as "${statusLabels[status]}"` })
+  }
+
+  const togglePostStatus = (platform: string, postId: number) => {
+    const key = `${platform}-${postId}`
+    const current = postStatuses[key] || "draft"
+    const next = current === "draft" ? "review" : current === "review" ? "approved" : current === "approved" ? "published" : "draft"
+    setPostStatus(platform, postId, next)
   }
 
   const copy = (text: string, id: string) => {
@@ -4549,8 +4566,8 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
                   <CheckSquare size={20} className="text-green-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">{Object.values(postStatuses).filter(s => s === "ready").length}</p>
-                  <p className="text-xs text-gray-500">Ready</p>
+                  <p className="text-2xl font-bold text-gray-900">{Object.values(postStatuses).filter(s => s === "approved").length}</p>
+                  <p className="text-xs text-gray-500">Approved</p>
                 </div>
               </div>
             </div>
@@ -4722,7 +4739,7 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {filtered().map((post: any) => {
                   const key = `${platform}-${post.id}`
-                  const status = postStatuses[key] || post.status || "ready"
+                  const status = postStatuses[key] || "draft"
                   const isEditing = editingPost === key
                   const isSelected = selectedPosts.has(key)
                   const prediction = predictEngagement(post.content, platform)
@@ -4753,13 +4770,24 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="font-medium text-gray-900">{post.title}</h3>
-                              <span
-                                className={`px-2 py-0.5 text-xs rounded-full ${
-                                  status === "ready" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  togglePostStatus(platform, post.id)
+                                }}
+                                className={`px-2 py-0.5 text-xs rounded-full cursor-pointer hover:opacity-80 ${
+                                  status === "approved" ? "bg-green-100 text-green-700" :
+                                  status === "published" ? "bg-blue-100 text-blue-700" :
+                                  status === "review" ? "bg-amber-100 text-amber-700" :
+                                  "bg-gray-100 text-gray-600"
                                 }`}
+                                title="Click to change status"
                               >
-                                {status === "ready" ? "Ready" : "Review"}
-                              </span>
+                                {status === "approved" ? "Approved" :
+                                 status === "published" ? "Published" :
+                                 status === "review" ? "Review" :
+                                 "Draft"}
+                              </button>
                               <span
                                 className={`px-2 py-0.5 text-xs rounded-full flex items-center gap-1 ${
                                   prediction.level === "high"
@@ -4787,26 +4815,28 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {status === "review" && (
+                          {status !== "approved" && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
-                                togglePostStatus(platform, post.id)
-                              }}
-                              className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg"
-                            >
-                              <Square size={18} />
-                            </button>
-                          )}
-                          {status === "ready" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                togglePostStatus(platform, post.id)
+                                setPostStatus(platform, post.id, "approved")
                               }}
                               className="p-2 text-green-500 hover:bg-green-50 rounded-lg"
+                              title="Approve post"
                             >
                               <CheckSquare size={18} />
+                            </button>
+                          )}
+                          {status === "approved" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setPostStatus(platform, post.id, "published")
+                              }}
+                              className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"
+                              title="Mark as published"
+                            >
+                              <ExternalLink size={18} />
                             </button>
                           )}
                           <button
