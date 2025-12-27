@@ -42,8 +42,9 @@ import {
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
-import { generateContentWithLLM, type GenerationProgress } from "@/lib/content/llm-generator"
+import { generateContentWithLLM, generateContentWithStreaming, type GenerationProgress } from "@/lib/content/llm-generator"
 import { parseCompetitors, formatInsightsForPrompt, loadCompetitorInsights, saveCompetitorInsights, type CompetitorInsights } from "@/lib/competitors/analyzer"
+import { toast } from "@/hooks/use-toast"
 import type { FormData } from "@/types/form"
 
 // ============================================
@@ -108,10 +109,10 @@ const importData = (file: File, onSuccess: () => void) => {
       if (data.dailyTasks) saveToLocalStorage(STORAGE_KEYS.DAILY_TASKS, data.dailyTasks)
       if (data.readyState !== undefined) saveToLocalStorage(STORAGE_KEYS.READY_STATE, data.readyState)
 
-      alert("✓ Data imported successfully! Reloading...")
+      toast({ title: "Success", description: "Data imported successfully! Reloading..." })
       onSuccess()
     } catch (error) {
-      alert("Error importing data. Please check the file format.")
+      toast({ title: "Error", description: "Error importing data. Please check the file format.", variant: "destructive" })
       console.error(error)
     }
   }
@@ -1709,19 +1710,19 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
 
     // Show success feedback
     setTimeout(() => {
-      alert("✓ Autofilled from AI response")
+      toast({ title: "Success", description: "Autofilled from AI response" })
     }, 100)
   }
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    alert("Prompt copied to clipboard!")
+    toast({ title: "Copied", description: "Prompt copied to clipboard" })
   }
 
   // Direct AI autofill using Claude API
   const handleDirectAutofill = async () => {
     if (!formData.companyName) {
-      alert("Please enter a company name first")
+      toast({ title: "Required", description: "Please enter a company name first", variant: "destructive" })
       return
     }
 
@@ -1742,9 +1743,9 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
 
       if (!response.ok) {
         if (result.code === "NO_API_KEY") {
-          alert("AI autofill is not available. The ANTHROPIC_API_KEY is not configured.")
+          toast({ title: "Not Available", description: "AI autofill is not available. The ANTHROPIC_API_KEY is not configured.", variant: "destructive" })
         } else {
-          alert(`Autofill failed: ${result.error || "Unknown error"}`)
+          toast({ title: "Failed", description: `Autofill failed: ${result.error || "Unknown error"}`, variant: "destructive" })
         }
         setIsAutoFilling(false)
         return
@@ -1753,11 +1754,11 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
       if (result.success) {
         setAutofillResult(result)
       } else {
-        alert("Could not find information for this company. Try adding a website URL.")
+        toast({ title: "Not Found", description: "Could not find information for this company. Try adding a website URL.", variant: "destructive" })
       }
     } catch (error) {
       console.error("Autofill error:", error)
-      alert("Failed to research company. Please check your internet connection.")
+      toast({ title: "Error", description: "Failed to research company. Please check your internet connection.", variant: "destructive" })
     } finally {
       setIsAutoFilling(false)
     }
@@ -1792,7 +1793,7 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
 
     // Show success feedback
     setTimeout(() => {
-      alert(`✓ Autofilled ${autofillResult.completeness?.filledFields?.length || 0} fields from AI research`)
+      toast({ title: "Success", description: `Autofilled ${autofillResult.completeness?.filledFields?.length || 0} fields from AI research` })
     }, 100)
   }
 
@@ -1837,8 +1838,8 @@ Based on your knowledge of ${formData.companyName || "[Company Name]"} and the $
         setProgress(25)
         setProgressMessage("AI is generating personalized content...")
 
-        // Generate content with LLM
-        const result = await generateContentWithLLM(
+        // Generate content with streaming LLM for better UX
+        const result = await generateContentWithStreaming(
           formData,
           competitorInsights,
           (progressUpdate: GenerationProgress) => {
@@ -2720,6 +2721,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
   const [editingPost, setEditingPost] = useState<string | null>(null)
   const [editContent, setEditContent] = useState("")
   const [postStatuses, setPostStatuses] = useState<Record<string, "ready" | "review">>({})
+  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set())
 
   const [showFilters, setShowFilters] = useState(false)
   const [view, setView] = useState("dashboard") // Added view state
@@ -2760,7 +2762,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
 
   const handleRegeneratePost = (platform: string, postId: number) => {
     // In a real app, this would call an AI API to regenerate
-    alert(`Regenerating ${platform} post #${postId}...`)
+    toast({ title: "Regenerating", description: `Regenerating ${platform} post #${postId}...` })
     // For now, just mark as review
     setPostStatuses((prev) => ({
       ...prev,
@@ -2781,10 +2783,98 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
       if (postIndex !== -1) {
         updatedContent[platform][postIndex].content = editContent
         setGeneratedContent(updatedContent) // Update state
+        toast({ title: "Saved", description: "Post content updated successfully" })
       }
     }
     setEditingPost(null)
     setEditContent("")
+  }
+
+  const handleCancelEdit = () => {
+    setEditingPost(null)
+    setEditContent("")
+  }
+
+  // Bulk selection handlers
+  const togglePostSelection = (postKey: string) => {
+    setSelectedPosts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(postKey)) {
+        newSet.delete(postKey)
+      } else {
+        newSet.add(postKey)
+      }
+      return newSet
+    })
+  }
+
+  const selectAllPosts = () => {
+    if (!generatedContent) return
+    const allKeys = new Set<string>()
+    const platforms = ["linkedin", "twitter", "threads", "email", "ads"]
+    platforms.forEach(platform => {
+      const posts = generatedContent[platform] || []
+      posts.forEach((post: any) => {
+        allKeys.add(`${platform}-${post.id}`)
+      })
+    })
+    setSelectedPosts(allKeys)
+    toast({ title: "Selected", description: `Selected ${allKeys.size} posts` })
+  }
+
+  const clearSelection = () => {
+    setSelectedPosts(new Set())
+  }
+
+  const deleteSelectedPosts = () => {
+    if (!generatedContent || selectedPosts.size === 0) return
+
+    const updatedContent = { ...generatedContent }
+    const platforms = ["linkedin", "twitter", "threads", "email", "ads"]
+
+    platforms.forEach(platform => {
+      if (updatedContent[platform]) {
+        updatedContent[platform] = updatedContent[platform].filter((post: any) =>
+          !selectedPosts.has(`${platform}-${post.id}`)
+        )
+      }
+    })
+
+    setGeneratedContent(updatedContent)
+    toast({ title: "Deleted", description: `Deleted ${selectedPosts.size} posts` })
+    setSelectedPosts(new Set())
+  }
+
+  const exportSelectedPosts = () => {
+    if (!generatedContent || selectedPosts.size === 0) return
+
+    const exportData: any[] = []
+    const platforms = ["linkedin", "twitter", "threads", "email", "ads"]
+
+    platforms.forEach(platform => {
+      const posts = generatedContent[platform] || []
+      posts.forEach((post: any) => {
+        if (selectedPosts.has(`${platform}-${post.id}`)) {
+          exportData.push({
+            platform,
+            id: post.id,
+            title: post.title,
+            pillar: post.pillar,
+            content: post.content,
+          })
+        }
+      })
+    })
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `selected-posts-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+
+    toast({ title: "Exported", description: `Exported ${exportData.length} posts` })
   }
 
   const togglePostStatus = (platform: string, postId: number) => {
@@ -3210,22 +3300,74 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                 </div>
               </div>
 
+              {/* Bulk Actions Bar */}
+              <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg p-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => selectedPosts.size > 0 ? clearSelection() : selectAllPosts()}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
+                  >
+                    {selectedPosts.size > 0 ? (
+                      <>
+                        <Square size={16} className="text-gray-500" />
+                        Clear ({selectedPosts.size})
+                      </>
+                    ) : (
+                      <>
+                        <CheckSquare size={16} className="text-gray-500" />
+                        Select All
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {selectedPosts.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={exportSelectedPosts}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-200"
+                    >
+                      <Download size={14} />
+                      Export
+                    </button>
+                    <button
+                      onClick={deleteSelectedPosts}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg border border-red-200"
+                    >
+                      <X size={14} />
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {filtered().map((post: any) => {
                   const key = `${platform}-${post.id}`
                   const status = postStatuses[key] || post.status || "ready"
                   const isEditing = editingPost === key
+                  const isSelected = selectedPosts.has(key)
 
                   return (
                     <div
                       key={key}
-                      className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition"
+                      className={`bg-white border rounded-xl overflow-hidden hover:shadow-md transition ${isSelected ? "border-gray-900 ring-1 ring-gray-900" : "border-gray-200"}`}
                     >
                       <div
                         className="flex items-center justify-between p-4 cursor-pointer"
                         onClick={() => !isEditing && setExpanded(expanded === key ? null : key)}
                       >
                         <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              togglePostSelection(key)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 text-gray-900 rounded focus:ring-gray-900 flex-shrink-0"
+                          />
                           <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm font-medium text-gray-500">
                             {post.id}
                           </div>
@@ -3293,11 +3435,22 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                       {expanded === key && (
                         <div className="border-t border-gray-100 p-4 bg-gray-50">
                           {isEditing ? (
-                            <textarea
-                              value={editContent}
-                              onChange={(e) => setEditContent(e.target.value)}
-                              className="w-full min-h-[200px] p-3 text-sm text-gray-700 font-sans leading-relaxed border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 mb-4"
-                            />
+                            <>
+                              <textarea
+                                value={editContent}
+                                onChange={(e) => setEditContent(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") {
+                                    handleCancelEdit()
+                                  } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                    handleSaveEdit(platform, post.id)
+                                  }
+                                }}
+                                className="w-full min-h-[200px] p-3 text-sm text-gray-700 font-sans leading-relaxed border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 mb-2"
+                                autoFocus
+                              />
+                              <p className="text-xs text-gray-500 mb-4">Press Esc to cancel • ⌘+Enter to save</p>
+                            </>
                           ) : (
                             <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed mb-4">
                               {post.content}
@@ -3325,12 +3478,20 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                               <RefreshCw size={14} /> Regenerate
                             </button>
                             {isEditing ? (
-                              <button
-                                onClick={() => handleSaveEdit(platform, post.id)}
-                                className="flex items-center gap-2 px-4 py-2 border border-green-500 text-green-600 text-sm rounded-lg hover:bg-green-50"
-                              >
-                                <Check size={14} /> Save
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleSaveEdit(platform, post.id)}
+                                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                                >
+                                  <Check size={14} /> Save
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-white"
+                                >
+                                  <X size={14} /> Cancel
+                                </button>
+                              </>
                             ) : (
                               <button
                                 onClick={() => handleEditPost(platform, post.id, post.content)}

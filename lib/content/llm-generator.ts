@@ -182,6 +182,133 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Generate content using streaming API for better UX
+ */
+export async function generateContentWithStreaming(
+  formData: FormData,
+  competitorInsights?: string,
+  onProgress?: (progress: GenerationProgress) => void,
+  onChunk?: (text: string) => void
+): Promise<GenerationResult> {
+  try {
+    onProgress?.({
+      stage: "preparing",
+      message: "Connecting to AI...",
+      progress: 5,
+    })
+
+    const response = await fetch("/api/generate-stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        formData,
+        competitorInsights,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      onProgress?.({
+        stage: "error",
+        message: errorData.error || "Failed to start generation",
+        progress: 100,
+      })
+      return {
+        success: false,
+        error: errorData.error || "Failed to start generation",
+      }
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      return { success: false, error: "No response body" }
+    }
+
+    const decoder = new TextDecoder()
+    let fullContent: GeneratedContent | null = null
+
+    onProgress?.({
+      stage: "generating",
+      message: "AI is writing your content...",
+      progress: 10,
+    })
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value, { stream: true })
+      const lines = chunk.split("\n\n")
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue
+
+        try {
+          const data = JSON.parse(line.slice(6))
+
+          switch (data.type) {
+            case "status":
+              onProgress?.({
+                stage: "generating",
+                message: data.message,
+                progress: data.progress || 50,
+              })
+              break
+
+            case "progress":
+              onProgress?.({
+                stage: "generating",
+                message: data.message,
+                progress: data.progress,
+              })
+              break
+
+            case "chunk":
+              onChunk?.(data.text)
+              break
+
+            case "complete":
+              fullContent = data.content
+              onProgress?.({
+                stage: "complete",
+                message: "Content generated successfully!",
+                progress: 100,
+              })
+              break
+
+            case "error":
+              onProgress?.({
+                stage: "error",
+                message: data.error,
+                progress: 100,
+              })
+              return { success: false, error: data.error }
+          }
+        } catch {
+          // Ignore JSON parse errors for incomplete chunks
+        }
+      }
+    }
+
+    if (fullContent) {
+      return { success: true, content: fullContent }
+    }
+
+    return { success: false, error: "No content received" }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    onProgress?.({
+      stage: "error",
+      message: errorMessage,
+      progress: 100,
+    })
+    return { success: false, error: errorMessage }
+  }
+}
+
+/**
  * Generation mode type
  */
 export type GenerationMode = "template" | "llm"
