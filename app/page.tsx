@@ -2613,6 +2613,41 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     return loadFromLocalStorage(STORAGE_KEYS.DAILY_TASKS) || {}
   })
 
+  // Competitor insights state
+  const [competitorInsights, setCompetitorInsights] = useState<CompetitorInsights | null>(() => {
+    return loadCompetitorInsights()
+  })
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false)
+
+  const refreshCompetitorInsights = async () => {
+    if (!companyData?.competitors) return
+
+    setIsLoadingInsights(true)
+    try {
+      const competitors = parseCompetitors(companyData)
+      const response = await fetch("/api/competitors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyName: companyData.companyName,
+          industry: companyData.industry,
+          competitors: competitors.map((c: any) => c.name),
+          website: companyData.website,
+        }),
+      })
+
+      if (response.ok) {
+        const { insights } = await response.json()
+        saveCompetitorInsights(insights)
+        setCompetitorInsights(insights)
+      }
+    } catch (error) {
+      console.error("Failed to refresh competitor insights:", error)
+    } finally {
+      setIsLoadingInsights(false)
+    }
+  }
+
   const filtered = () => {
     let posts = generatedContent[platform] || []
     if (pillar !== "all") posts = posts.filter((p: any) => p.pillar.toLowerCase().includes(pillar.toLowerCase()))
@@ -2698,6 +2733,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
             { id: "calendar", icon: Calendar, label: "90-Day Calendar" },
             { id: "tasks", icon: CheckSquare, label: "Daily Tasks", badge: `${done}/${tasks.length}` },
             { id: "pillars", icon: Target, label: "Content Pillars" },
+            { id: "competitors", icon: Users, label: "Competitor Insights" },
             { id: "metrics", icon: BarChart3, label: "Metrics & KPIs" },
           ].map((n) => (
             <button
@@ -3255,6 +3291,133 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {section === "competitors" && (
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Competitor Insights</h2>
+                  <p className="text-gray-500">Intelligence on your competition's content strategy</p>
+                </div>
+                <button
+                  onClick={refreshCompetitorInsights}
+                  disabled={isLoadingInsights || !companyData?.competitors}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw size={16} className={isLoadingInsights ? "animate-spin" : ""} />
+                  {isLoadingInsights ? "Analyzing..." : "Refresh Analysis"}
+                </button>
+              </div>
+
+              {!companyData?.competitors ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+                  <Users size={48} className="mx-auto text-yellow-500 mb-4" />
+                  <h3 className="text-lg font-semibold text-yellow-900 mb-2">No Competitors Configured</h3>
+                  <p className="text-yellow-700 text-sm">
+                    Add competitors during onboarding to get AI-powered competitive insights.
+                  </p>
+                </div>
+              ) : !competitorInsights ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+                  <Sparkles size={48} className="mx-auto text-blue-500 mb-4" />
+                  <h3 className="text-lg font-semibold text-blue-900 mb-2">Generate Competitor Analysis</h3>
+                  <p className="text-blue-700 text-sm mb-4">
+                    Click "Refresh Analysis" to get AI-powered insights on your competitors' content strategies.
+                  </p>
+                  <button
+                    onClick={refreshCompetitorInsights}
+                    disabled={isLoadingInsights}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isLoadingInsights ? "Analyzing..." : "Analyze Competitors"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Summary */}
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-6">
+                    <h3 className="font-semibold text-gray-900 mb-2">Executive Summary</h3>
+                    <p className="text-gray-700">{competitorInsights.summary}</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Last updated: {new Date(competitorInsights.generatedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  {/* Competitor Analysis */}
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-200">
+                      <h3 className="font-semibold text-gray-900">Competitor Breakdown</h3>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {competitorInsights.competitors?.map((comp, idx) => (
+                        <div key={idx} className="p-6">
+                          <h4 className="font-semibold text-gray-900 mb-4">{comp.competitor}</h4>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              <h5 className="text-sm font-medium text-green-700 mb-2">Strengths</h5>
+                              <ul className="space-y-2">
+                                {comp.strengths?.slice(0, 3).map((s, i) => (
+                                  <li key={i} className="text-sm text-gray-600 flex gap-2">
+                                    <Check size={14} className="text-green-600 flex-shrink-0 mt-0.5" />
+                                    <span><strong>{s.strength}</strong> - {s.example}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <h5 className="text-sm font-medium text-orange-700 mb-2">Opportunities for You</h5>
+                              <ul className="space-y-2">
+                                {comp.weaknesses?.slice(0, 3).map((w, i) => (
+                                  <li key={i} className="text-sm text-gray-600 flex gap-2">
+                                    <Target size={14} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                                    <span><strong>{w.weakness}</strong> - {w.opportunity}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recommended Angles */}
+                  {competitorInsights.recommendedAngles && competitorInsights.recommendedAngles.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 p-6">
+                      <h3 className="font-semibold text-gray-900 mb-4">Recommended Content Angles</h3>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {competitorInsights.recommendedAngles.map((angle, idx) => (
+                          <div key={idx} className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <h4 className="font-medium text-green-900 mb-1">{angle.angle}</h4>
+                            <p className="text-sm text-green-700 mb-2">{angle.rationale}</p>
+                            <p className="text-xs text-green-600 font-medium">Differentiator: {angle.differentiator}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* What to Avoid */}
+                  {competitorInsights.avoidList && competitorInsights.avoidList.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 p-6">
+                      <h3 className="font-semibold text-gray-900 mb-4">What to Avoid</h3>
+                      <div className="space-y-3">
+                        {competitorInsights.avoidList.map((item, idx) => (
+                          <div key={idx} className="flex gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <X size={18} className="text-red-600 flex-shrink-0" />
+                            <div>
+                              <span className="font-medium text-red-900">{item.tactic}</span>
+                              <p className="text-sm text-red-700">{item.reason}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
