@@ -3335,6 +3335,9 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
   })
   const [showHistoryFor, setShowHistoryFor] = useState<string | null>(null)
   const [showPostingTimes, setShowPostingTimes] = useState(false)
+  const [repurposingPost, setRepurposingPost] = useState<{ platform: string; postId: number; content: string } | null>(null)
+  const [repurposeTarget, setRepurposeTarget] = useState<string>("")
+  const [isRepurposing, setIsRepurposing] = useState(false)
 
   useEffect(() => {
     saveToLocalStorage(STORAGE_KEYS.GENERATED_CONTENT + "_history", contentHistory)
@@ -4004,6 +4007,65 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
   const closeScore = () => {
     setScoringPost(null)
     setScoringResult(null)
+  }
+
+  // Repurpose content for different platform
+  const handleRepurpose = async () => {
+    if (!repurposingPost || !repurposeTarget) return
+
+    setIsRepurposing(true)
+
+    try {
+      const response = await fetch("/api/repurpose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: repurposingPost.content,
+          sourcePlatform: repurposingPost.platform,
+          targetPlatform: repurposeTarget,
+          formData: companyData,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast({ title: "Error", description: result.error || "Failed to repurpose", variant: "destructive" })
+        return
+      }
+
+      if (result.success) {
+        // Add to the target platform's content
+        setGeneratedContent((prev: any) => {
+          const updated = { ...prev }
+          const targetPosts = updated[repurposeTarget] || []
+          const newId = targetPosts.length > 0 ? Math.max(...targetPosts.map((p: any) => p.id)) + 1 : 1
+          updated[repurposeTarget] = [
+            ...targetPosts,
+            {
+              id: newId,
+              title: `Repurposed from ${repurposingPost.platform}`,
+              pillar: "Cross-Platform",
+              status: "ready",
+              content: result.content,
+            }
+          ]
+          return updated
+        })
+
+        toast({
+          title: "Content Repurposed",
+          description: `Created ${repurposeTarget} version - check the ${repurposeTarget} tab`
+        })
+        setRepurposingPost(null)
+        setRepurposeTarget("")
+      }
+    } catch (error) {
+      console.error("Repurpose error:", error)
+      toast({ title: "Error", description: "Failed to repurpose content", variant: "destructive" })
+    } finally {
+      setIsRepurposing(false)
+    }
   }
 
   const togglePostStatus = (platform: string, postId: number) => {
@@ -4872,6 +4934,13 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
                                   ? `${scheduledPosts[`${platform}-${post.id}`].date} ${scheduledPosts[`${platform}-${post.id}`].time}`
                                   : "Schedule"}
                               </span>
+                            </button>
+                            <button
+                              onClick={() => setRepurposingPost({ platform, postId: post.id, content: post.content })}
+                              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-pink-200 text-pink-600 text-xs sm:text-sm rounded-lg hover:bg-pink-50"
+                            >
+                              <Shuffle size={14} />
+                              <span className="hidden sm:inline">Repurpose</span>
                             </button>
                             {contentHistory[key] && contentHistory[key].length > 0 && (
                               <button
@@ -6071,6 +6140,66 @@ function Dashboard({ companyData, onReset, onUpdateData }: { companyData: any; o
           )}
         </div>
       </div>
+
+      {/* Repurpose Modal */}
+      {repurposingPost && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">Repurpose Content</h2>
+              <p className="text-sm text-gray-500 mt-1">Transform this {repurposingPost.platform} post for another platform</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Target Platform</label>
+                <select
+                  value={repurposeTarget}
+                  onChange={(e) => setRepurposeTarget(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                >
+                  <option value="">Select a platform...</option>
+                  {["linkedin", "twitter", "threads", "email", "ads"]
+                    .filter(p => p !== repurposingPost.platform)
+                    .map(p => (
+                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))
+                  }
+                </select>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500 mb-1">Original Content Preview:</p>
+                <p className="text-sm text-gray-700 line-clamp-3">{repurposingPost.content}</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setRepurposingPost(null)
+                    setRepurposeTarget("")
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRepurpose}
+                  disabled={!repurposeTarget || isRepurposing}
+                  className="flex-1 px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isRepurposing ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" /> Converting...
+                    </>
+                  ) : (
+                    <>
+                      <Shuffle size={14} /> Repurpose
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
