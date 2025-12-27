@@ -5504,6 +5504,120 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                       </div>
                     </div>
                   )}
+
+                  {/* Content Gap Analysis */}
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <TrendingUp size={18} className="text-purple-600" />
+                      Content Gap Analysis
+                    </h3>
+                    <p className="text-sm text-gray-500 mb-4">Compare your content coverage against competitor strategies</p>
+
+                    {(() => {
+                      // Analyze content gaps
+                      const yourPillars = new Set<string>()
+                      const yourPlatforms = new Set<string>()
+                      let yourPostCount = 0
+
+                      Object.entries(generatedContent).forEach(([platform, posts]: [string, any]) => {
+                        if (Array.isArray(posts) && posts.length > 0) {
+                          yourPlatforms.add(platform)
+                          yourPostCount += posts.length
+                          posts.forEach((post: any) => {
+                            if (post.pillar) yourPillars.add(post.pillar)
+                          })
+                        }
+                      })
+
+                      const allPillars = [
+                        "Product Updates", "Thought Leadership", "Industry Insights",
+                        "Customer Stories", "Behind the Scenes", "Educational Content",
+                        "Case Studies", "Company Culture"
+                      ]
+                      const allPlatforms = ["linkedin", "twitter", "threads", "email", "ads"]
+
+                      const missingPillars = allPillars.filter(p => !yourPillars.has(p))
+                      const missingPlatforms = allPlatforms.filter(p => !yourPlatforms.has(p))
+
+                      return (
+                        <div className="space-y-6">
+                          {/* Coverage Score */}
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="text-center p-4 bg-gray-50 rounded-lg">
+                              <div className="text-2xl font-bold text-gray-900">{yourPostCount}</div>
+                              <div className="text-xs text-gray-500">Total Posts</div>
+                            </div>
+                            <div className="text-center p-4 bg-gray-50 rounded-lg">
+                              <div className="text-2xl font-bold text-gray-900">{yourPillars.size}</div>
+                              <div className="text-xs text-gray-500">Content Pillars</div>
+                            </div>
+                            <div className="text-center p-4 bg-gray-50 rounded-lg">
+                              <div className="text-2xl font-bold text-gray-900">{yourPlatforms.size}</div>
+                              <div className="text-xs text-gray-500">Platforms</div>
+                            </div>
+                          </div>
+
+                          {/* Content Gaps */}
+                          {missingPillars.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-amber-700 mb-2">Missing Content Types</h4>
+                              <div className="flex flex-wrap gap-2">
+                                {missingPillars.slice(0, 5).map((pillar) => (
+                                  <span key={pillar} className="px-3 py-1 bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-full">
+                                    {pillar}
+                                  </span>
+                                ))}
+                              </div>
+                              <p className="text-xs text-gray-500 mt-2">
+                                Consider creating content in these areas to expand your coverage
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Platform Gaps */}
+                          {missingPlatforms.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-blue-700 mb-2">Unused Platforms</h4>
+                              <div className="flex flex-wrap gap-2">
+                                {missingPlatforms.map((p) => (
+                                  <span key={p} className="px-3 py-1 bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-full capitalize">
+                                    {p === "ads" ? "Ad Copy" : p}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Recommendations based on competitor insights */}
+                          {competitorInsights.recommendedAngles && (
+                            <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                              <h4 className="text-sm font-medium text-purple-900 mb-2">Quick Win Opportunities</h4>
+                              <ul className="space-y-2 text-sm text-purple-700">
+                                {missingPillars.length > 0 && (
+                                  <li className="flex gap-2">
+                                    <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
+                                    Create {missingPillars[0]} content to differentiate from competitors
+                                  </li>
+                                )}
+                                {yourPostCount < 10 && (
+                                  <li className="flex gap-2">
+                                    <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
+                                    Generate more posts to build a comprehensive content library
+                                  </li>
+                                )}
+                                {!yourPlatforms.has("linkedin") && (
+                                  <li className="flex gap-2">
+                                    <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
+                                    LinkedIn is essential for B2B - add it to your strategy
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
                 </div>
               )}
             </div>
