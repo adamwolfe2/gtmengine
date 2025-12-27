@@ -3560,6 +3560,82 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
     toast({ title: "Exported", description: `Exported ${exportData.length} posts` })
   }
 
+  // Bulk generate more content
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false)
+  const [bulkGenerateCount, setBulkGenerateCount] = useState(3)
+
+  const handleBulkGenerate = async () => {
+    setIsBulkGenerating(true)
+    try {
+      const response = await fetch("/api/generate-stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formData: {
+            ...companyData,
+            // Request additional posts
+            bulkCount: bulkGenerateCount,
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to generate content")
+      }
+
+      // Handle streaming response
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error("No response body")
+
+      const decoder = new TextDecoder()
+      let fullText = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split("\n")
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.type === "complete" && data.content) {
+                // Merge new content with existing
+                const newContent = data.content
+                setGeneratedContent((prev: any) => {
+                  const merged = { ...prev }
+                  const platforms = ["linkedin", "twitter", "threads", "email", "ads"]
+                  platforms.forEach(platform => {
+                    const existing = merged[platform] || []
+                    const newPosts = newContent[platform] || []
+                    // Add new posts with unique IDs
+                    const maxId = existing.reduce((max: number, p: any) => Math.max(max, p.id || 0), 0)
+                    const uniqueNewPosts = newPosts.map((p: any, i: number) => ({
+                      ...p,
+                      id: maxId + i + 1,
+                    }))
+                    merged[platform] = [...existing, ...uniqueNewPosts]
+                  })
+                  return merged
+                })
+                toast({ title: "Content Generated", description: "New posts added to your library" })
+              }
+            } catch (e) {
+              // Skip non-JSON lines
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Bulk generate error:", error)
+      toast({ title: "Error", description: "Failed to generate content", variant: "destructive" })
+    } finally {
+      setIsBulkGenerating(false)
+    }
+  }
+
   // Critique a post using AI
   const handleCritiquePost = async (platform: string, postId: number, content: string) => {
     const key = `${platform}-${postId}`
@@ -4122,13 +4198,32 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                   <h2 className="text-xl md:text-2xl font-bold text-gray-900">Content Library</h2>
                   <p className="text-sm text-gray-600 mt-1">Browse and manage your generated content</p>
                 </div>
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="md:hidden flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium"
-                >
-                  <Filter size={16} />
-                  Filters
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleBulkGenerate}
+                    disabled={isBulkGenerating}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    {isBulkGenerating ? (
+                      <>
+                        <RefreshCw size={16} className="animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Generate More
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="md:hidden flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium"
+                  >
+                    <Filter size={16} />
+                    Filters
+                  </button>
+                </div>
               </div>
 
               <div className={`space-y-4 ${showFilters ? "block" : "hidden md:block"}`}>
