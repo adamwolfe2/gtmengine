@@ -3852,23 +3852,23 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                               })()}
                             </>
                           )}
-                          <div className="flex gap-2 flex-wrap">
+                          <div className="flex gap-1.5 sm:gap-2 flex-wrap">
                             {/* Copy button with format dropdown */}
                             <div className="relative">
                               <div className="flex">
                                 <button
                                   onClick={() => copy(post.content, `${key}-full`)}
-                                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-l-lg hover:bg-gray-800"
+                                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 bg-gray-900 text-white text-xs sm:text-sm rounded-l-lg hover:bg-gray-800"
                                 >
                                   {copied === `${key}-full` ? (
-                                    <><Check size={14} /> Copied!</>
+                                    <><Check size={14} /> <span className="hidden sm:inline">Copied!</span></>
                                   ) : (
-                                    <><Copy size={14} /> Copy</>
+                                    <><Copy size={14} /> <span className="hidden sm:inline">Copy</span></>
                                   )}
                                 </button>
                                 <button
                                   onClick={() => setCopyDropdown(copyDropdown === key ? null : key)}
-                                  className="px-2 py-2 bg-gray-900 text-white text-sm rounded-r-lg hover:bg-gray-800 border-l border-gray-700"
+                                  className="px-1.5 sm:px-2 py-2 bg-gray-900 text-white text-sm rounded-r-lg hover:bg-gray-800 border-l border-gray-700"
                                 >
                                   <ChevronDown size={14} className={`transition ${copyDropdown === key ? "rotate-180" : ""}`} />
                                 </button>
@@ -3898,96 +3898,98 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                             </div>
                             <button
                               onClick={() => handleRegeneratePost(platform, post.id)}
-                              className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-white"
+                              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-gray-200 text-gray-600 text-xs sm:text-sm rounded-lg hover:bg-white"
                             >
-                              <RefreshCw size={14} /> Regenerate
+                              <RefreshCw size={14} /> <span className="hidden sm:inline">Regenerate</span><span className="sm:hidden">Regen</span>
                             </button>
                             <button
                               onClick={() => handleCritiquePost(platform, post.id, post.content)}
                               disabled={critiquingPost === key}
-                              className="flex items-center gap-2 px-4 py-2 border border-purple-200 text-purple-600 text-sm rounded-lg hover:bg-purple-50 disabled:opacity-50"
+                              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-purple-200 text-purple-600 text-xs sm:text-sm rounded-lg hover:bg-purple-50 disabled:opacity-50"
                             >
                               {critiquingPost === key ? (
-                                <><RefreshCw size={14} className="animate-spin" /> Analyzing...</>
+                                <><RefreshCw size={14} className="animate-spin" /> <span className="hidden sm:inline">Analyzing...</span></>
                               ) : (
-                                <><Sparkles size={14} /> Feedback</>
+                                <><Sparkles size={14} /> <span className="hidden sm:inline">Feedback</span></>
                               )}
                             </button>
                             <button
                               onClick={() => handleGetVariants(platform, post.id, post.content)}
                               disabled={variantsPost === key && !variantsResult}
-                              className="flex items-center gap-2 px-4 py-2 border border-blue-200 text-blue-600 text-sm rounded-lg hover:bg-blue-50 disabled:opacity-50"
+                              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-blue-200 text-blue-600 text-xs sm:text-sm rounded-lg hover:bg-blue-50 disabled:opacity-50"
                             >
                               {variantsPost === key && !variantsResult ? (
-                                <><RefreshCw size={14} className="animate-spin" /> Loading...</>
+                                <><RefreshCw size={14} className="animate-spin" /></>
                               ) : (
-                                <><Shuffle size={14} /> A/B</>
+                                <><Shuffle size={14} /> <span className="hidden sm:inline">A/B</span></>
                               )}
                             </button>
                             {(platform === "linkedin" || platform === "twitter" || platform === "threads") && (
                               <button
                                 onClick={() => handleGetHashtags(platform, post.id, post.content)}
                                 disabled={hashtagsPost === key && !hashtagsResult}
-                                className="flex items-center gap-2 px-4 py-2 border border-cyan-200 text-cyan-600 text-sm rounded-lg hover:bg-cyan-50 disabled:opacity-50"
+                                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-cyan-200 text-cyan-600 text-xs sm:text-sm rounded-lg hover:bg-cyan-50 disabled:opacity-50"
                               >
                                 {hashtagsPost === key && !hashtagsResult ? (
-                                  <><RefreshCw size={14} className="animate-spin" /> Loading...</>
+                                  <><RefreshCw size={14} className="animate-spin" /></>
                                 ) : (
-                                  <><Hash size={14} /> Tags</>
+                                  <><Hash size={14} /> <span className="hidden sm:inline">Tags</span></>
                                 )}
                               </button>
                             )}
                             <button
                               onClick={() => handleGetScore(platform, post.id, post.content)}
                               disabled={scoringPost === key && !scoringResult}
-                              className="flex items-center gap-2 px-4 py-2 border border-amber-200 text-amber-600 text-sm rounded-lg hover:bg-amber-50 disabled:opacity-50"
+                              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-amber-200 text-amber-600 text-xs sm:text-sm rounded-lg hover:bg-amber-50 disabled:opacity-50"
                             >
                               {scoringPost === key && !scoringResult ? (
-                                <><RefreshCw size={14} className="animate-spin" /> Scoring...</>
+                                <><RefreshCw size={14} className="animate-spin" /></>
                               ) : (
-                                <><BarChart3 size={14} /> Score</>
+                                <><BarChart3 size={14} /> <span className="hidden sm:inline">Score</span></>
                               )}
                             </button>
                             <button
                               onClick={() => setPreviewPost({ platform, content: post.content, title: post.title })}
-                              className="flex items-center gap-2 px-4 py-2 border border-indigo-200 text-indigo-600 text-sm rounded-lg hover:bg-indigo-50"
+                              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-indigo-200 text-indigo-600 text-xs sm:text-sm rounded-lg hover:bg-indigo-50"
                             >
-                              <Eye size={14} /> Preview
+                              <Eye size={14} /> <span className="hidden sm:inline">Preview</span>
                             </button>
                             <button
                               onClick={() => setSchedulingPost({ platform, postId: post.id, title: post.title })}
-                              className={`flex items-center gap-2 px-4 py-2 border text-sm rounded-lg ${
+                              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border text-xs sm:text-sm rounded-lg ${
                                 scheduledPosts[`${platform}-${post.id}`]
                                   ? "border-green-200 text-green-600 bg-green-50"
                                   : "border-teal-200 text-teal-600 hover:bg-teal-50"
                               }`}
                             >
                               <Clock size={14} />
-                              {scheduledPosts[`${platform}-${post.id}`]
-                                ? `${scheduledPosts[`${platform}-${post.id}`].date} ${scheduledPosts[`${platform}-${post.id}`].time}`
-                                : "Schedule"}
+                              <span className="hidden sm:inline">
+                                {scheduledPosts[`${platform}-${post.id}`]
+                                  ? `${scheduledPosts[`${platform}-${post.id}`].date} ${scheduledPosts[`${platform}-${post.id}`].time}`
+                                  : "Schedule"}
+                              </span>
                             </button>
                             {isEditing ? (
                               <>
                                 <button
                                   onClick={() => handleSaveEdit(platform, post.id)}
-                                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 bg-green-600 text-white text-xs sm:text-sm rounded-lg hover:bg-green-700"
                                 >
-                                  <Check size={14} /> Save
+                                  <Check size={14} /> <span className="hidden sm:inline">Save</span>
                                 </button>
                                 <button
                                   onClick={handleCancelEdit}
-                                  className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-white"
+                                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-gray-200 text-gray-600 text-xs sm:text-sm rounded-lg hover:bg-white"
                                 >
-                                  <X size={14} /> Cancel
+                                  <X size={14} /> <span className="hidden sm:inline">Cancel</span>
                                 </button>
                               </>
                             ) : (
                               <button
                                 onClick={() => handleEditPost(platform, post.id, post.content)}
-                                className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-white"
+                                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 border border-gray-200 text-gray-600 text-xs sm:text-sm rounded-lg hover:bg-white"
                               >
-                                <Edit3 size={14} /> Edit
+                                <Edit3 size={14} /> <span className="hidden sm:inline">Edit</span>
                               </button>
                             )}
                           </div>
