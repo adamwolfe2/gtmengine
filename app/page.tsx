@@ -45,6 +45,7 @@ import {
   Clock,
   Share2,
   ExternalLink,
+  Layers,
 } from "lucide-react"
 
 import { parseAIResponse } from "@/lib/parse-ai-response"
@@ -311,6 +312,283 @@ const INDUSTRIES = [
   { value: "marketplace", label: "Marketplace" },
   { value: "coaching", label: "Coaching / Info Products" },
   { value: "other", label: "Other" },
+]
+
+// ============================================
+// CONTENT TEMPLATES LIBRARY
+// ============================================
+
+const CONTENT_TEMPLATES = [
+  {
+    id: "hook-problem",
+    name: "Problem Hook",
+    category: "Hook",
+    platform: "linkedin",
+    description: "Start with a relatable pain point",
+    template: `Most [AUDIENCE] struggle with [PROBLEM].
+
+Here's why: [REASON]
+
+The solution isn't [COMMON MISCONCEPTION].
+
+It's [YOUR SOLUTION].
+
+Here's how it works:
+
+1. [STEP 1]
+2. [STEP 2]
+3. [STEP 3]
+
+[CTA]`,
+  },
+  {
+    id: "hook-contrarian",
+    name: "Contrarian Take",
+    category: "Hook",
+    platform: "linkedin",
+    description: "Challenge conventional wisdom",
+    template: `Unpopular opinion: [CONTRARIAN STATEMENT]
+
+I know this sounds crazy.
+
+But here's what I've learned after [EXPERIENCE]:
+
+[INSIGHT 1]
+[INSIGHT 2]
+[INSIGHT 3]
+
+The real truth? [CONCLUSION]
+
+What do you think? Agree or disagree?`,
+  },
+  {
+    id: "story-journey",
+    name: "Journey Story",
+    category: "Story",
+    platform: "linkedin",
+    description: "Share your transformation journey",
+    template: `[X] months ago, I was [BEFORE STATE].
+
+Today, I'm [AFTER STATE].
+
+Here's what changed:
+
+I stopped: [OLD BEHAVIOR]
+I started: [NEW BEHAVIOR]
+
+The biggest lesson?
+
+[KEY INSIGHT]
+
+If you're where I was [X] months ago, here's my advice:
+
+[ACTIONABLE TIP]
+
+Your future self will thank you.`,
+  },
+  {
+    id: "story-failure",
+    name: "Failure Story",
+    category: "Story",
+    platform: "linkedin",
+    description: "Share a lesson from failure",
+    template: `I failed at [THING].
+
+Not once. Not twice. [X] times.
+
+Here's what each failure taught me:
+
+Failure 1: [LESSON 1]
+Failure 2: [LESSON 2]
+Failure 3: [LESSON 3]
+
+Now? [CURRENT SUCCESS]
+
+The truth is: [WISDOM]
+
+Don't let failure stop you. Let it teach you.`,
+  },
+  {
+    id: "educational-listicle",
+    name: "Tips Listicle",
+    category: "Educational",
+    platform: "linkedin",
+    description: "Share actionable tips",
+    template: `[X] [TOPIC] tips that took me [TIME] to learn:
+
+1. [TIP 1]
+   → [WHY IT MATTERS]
+
+2. [TIP 2]
+   → [WHY IT MATTERS]
+
+3. [TIP 3]
+   → [WHY IT MATTERS]
+
+4. [TIP 4]
+   → [WHY IT MATTERS]
+
+5. [TIP 5]
+   → [WHY IT MATTERS]
+
+Bookmark this for later.
+
+Which tip resonated most with you?`,
+  },
+  {
+    id: "educational-framework",
+    name: "Framework Share",
+    category: "Educational",
+    platform: "linkedin",
+    description: "Share a proven framework",
+    template: `The [NAME] Framework:
+
+A simple way to [ACHIEVE OUTCOME].
+
+Here's how it works:
+
+[LETTER 1] - [WORD 1]
+→ [EXPLANATION]
+
+[LETTER 2] - [WORD 2]
+→ [EXPLANATION]
+
+[LETTER 3] - [WORD 3]
+→ [EXPLANATION]
+
+This framework helped me [RESULT].
+
+Save this. Use it. Thank me later.`,
+  },
+  {
+    id: "engagement-question",
+    name: "Discussion Question",
+    category: "Engagement",
+    platform: "linkedin",
+    description: "Spark a discussion",
+    template: `Quick question for [AUDIENCE]:
+
+[QUESTION]?
+
+I'm curious because [REASON].
+
+My take: [YOUR OPINION]
+
+Drop your thoughts below 👇`,
+  },
+  {
+    id: "engagement-poll",
+    name: "Poll Post",
+    category: "Engagement",
+    platform: "linkedin",
+    description: "Create a poll-style post",
+    template: `What's your biggest [TOPIC] challenge right now?
+
+A) [OPTION 1]
+B) [OPTION 2]
+C) [OPTION 3]
+D) Something else (comment below)
+
+Vote with the emoji that matches your answer!
+
+🅰️ 🅱️ ©️ 🆔
+
+I'll share solutions based on the top votes.`,
+  },
+  {
+    id: "promotional-launch",
+    name: "Product Launch",
+    category: "Promotional",
+    platform: "linkedin",
+    description: "Announce a new product/feature",
+    template: `Big news: [ANNOUNCEMENT] 🚀
+
+After [TIME] of [WORK], we're launching [PRODUCT/FEATURE].
+
+What it does:
+• [BENEFIT 1]
+• [BENEFIT 2]
+• [BENEFIT 3]
+
+Why we built it:
+[CUSTOMER NEED]
+
+Want early access?
+[CTA]
+
+[LINK]`,
+  },
+  {
+    id: "twitter-thread-starter",
+    name: "Thread Starter",
+    category: "Thread",
+    platform: "twitter",
+    description: "Start a Twitter thread",
+    template: `[HOOK STATEMENT]
+
+A thread on [TOPIC]:
+
+🧵`,
+  },
+  {
+    id: "twitter-hot-take",
+    name: "Hot Take",
+    category: "Engagement",
+    platform: "twitter",
+    description: "Share a bold opinion",
+    template: `Hot take: [BOLD STATEMENT]
+
+Most people think [COMMON BELIEF].
+
+But [YOUR INSIGHT].
+
+Agree or disagree?`,
+  },
+  {
+    id: "email-value",
+    name: "Value Email",
+    category: "Email",
+    platform: "email",
+    description: "Deliver pure value",
+    template: `Subject: [BENEFIT] in [TIME]
+
+Hey [NAME],
+
+Quick tip that saved me [RESULT]:
+
+[TIP/INSIGHT]
+
+Here's how to apply it:
+
+Step 1: [ACTION]
+Step 2: [ACTION]
+Step 3: [ACTION]
+
+That's it. Simple but powerful.
+
+Reply and let me know if you try it.
+
+[SIGNATURE]`,
+  },
+  {
+    id: "ad-pain-agitate",
+    name: "Pain-Agitate-Solve",
+    category: "Ad",
+    platform: "ads",
+    description: "Classic PAS formula",
+    template: `Tired of [PAIN POINT]?
+
+You've tried [FAILED SOLUTION].
+You've wasted [TIME/MONEY] on [FAILED SOLUTION].
+
+It's frustrating.
+
+[PRODUCT] fixes this.
+
+[BENEFIT] in [TIMEFRAME].
+
+[CTA] →`,
+  },
 ]
 
 // ============================================
@@ -3604,6 +3882,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
         <nav className="flex-1 p-3 space-1">
           {[
             { id: "library", icon: FileText, label: "Content Library", badge: total },
+            { id: "templates", icon: Layers, label: "Templates", badge: String(CONTENT_TEMPLATES.length) },
             { id: "calendar", icon: Calendar, label: "90-Day Calendar" },
             { id: "tasks", icon: CheckSquare, label: "Daily Tasks", badge: `${done}/${tasks.length}` },
             { id: "pillars", icon: Target, label: "Content Pillars" },
@@ -3697,6 +3976,7 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
             <nav className="flex-1 p-4 space-1">
               {[
                 { id: "library", label: "Content Library", icon: FileText, badge: total },
+                { id: "templates", label: "Templates", icon: Layers, badge: String(CONTENT_TEMPLATES.length) },
                 { id: "calendar", label: "Calendar", icon: Calendar },
                 { id: "tasks", label: "Daily Tasks", icon: CheckSquare, badge: `${done}/${tasks.length}` },
                 { id: "pillars", label: "Content Pillars", icon: Target },
@@ -4491,6 +4771,88 @@ function Dashboard({ companyData, onReset }: { companyData: any; onReset: () => 
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {section === "templates" && (
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Template Library</h2>
+                  <p className="text-gray-500">Pre-built templates for quick content creation</p>
+                </div>
+              </div>
+
+              {/* Template Categories */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {CONTENT_TEMPLATES.map((template) => (
+                  <div
+                    key={template.id}
+                    className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-sm transition"
+                  >
+                    <div className="p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{template.name}</h3>
+                          <p className="text-sm text-gray-500">{template.description}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            template.category === "Hook" ? "bg-purple-100 text-purple-700" :
+                            template.category === "Story" ? "bg-green-100 text-green-700" :
+                            template.category === "Educational" ? "bg-blue-100 text-blue-700" :
+                            template.category === "Engagement" ? "bg-orange-100 text-orange-700" :
+                            template.category === "Promotional" ? "bg-pink-100 text-pink-700" :
+                            template.category === "Email" ? "bg-emerald-100 text-emerald-700" :
+                            template.category === "Ad" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-700"
+                          }`}>{template.category}</span>
+                          <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded capitalize">{template.platform}</span>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3 mt-3 max-h-40 overflow-y-auto">
+                        <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">{template.template}</pre>
+                      </div>
+                      <div className="flex items-center gap-2 mt-3">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(template.template)
+                            toast({ title: "Copied", description: `${template.name} template copied to clipboard` })
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition"
+                        >
+                          <Copy size={14} /> Copy Template
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Copy with company name filled in
+                            const filled = template.template
+                              .replace(/\[COMPANY\]/gi, companyData.companyName || "Your Company")
+                              .replace(/\[PRODUCT\]/gi, companyData.companyName || "Your Product")
+                              .replace(/\[AUDIENCE\]/gi, companyData.targetAudience || "your audience")
+                            navigator.clipboard.writeText(filled)
+                            toast({ title: "Copied", description: "Template copied with your company info" })
+                          }}
+                          className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                        >
+                          <Sparkles size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tips Section */}
+              <div className="mt-8 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <h3 className="font-medium text-amber-900 mb-2">Template Tips</h3>
+                <ul className="text-sm text-amber-800 space-y-1">
+                  <li>• Replace [PLACEHOLDERS] with your specific content</li>
+                  <li>• Adjust the tone to match your brand voice</li>
+                  <li>• Test different templates to see what resonates with your audience</li>
+                  <li>• Click the sparkle button to auto-fill your company name</li>
+                </ul>
               </div>
             </div>
           )}
